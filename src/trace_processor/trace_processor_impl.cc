@@ -26,6 +26,7 @@
 #include "src/trace_processor/args_table.h"
 #include "src/trace_processor/args_tracker.h"
 #include "src/trace_processor/clock_tracker.h"
+#include "src/trace_processor/counter_values_table.h"
 #include "src/trace_processor/counters_table.h"
 #include "src/trace_processor/event_tracker.h"
 #include "src/trace_processor/instants_table.h"
@@ -159,6 +160,7 @@ TraceProcessorImpl::TraceProcessorImpl(const Config& cfg) {
   SqlStatsTable::RegisterTable(*db_, context_.storage.get());
   StringTable::RegisterTable(*db_, context_.storage.get());
   ThreadTable::RegisterTable(*db_, context_.storage.get());
+  CounterValuesTable::RegisterTable(*db_, context_.storage.get());
   CountersTable::RegisterTable(*db_, context_.storage.get());
   SpanJoinOperatorTable::RegisterTable(*db_, context_.storage.get());
   WindowOperatorTable::RegisterTable(*db_, context_.storage.get());

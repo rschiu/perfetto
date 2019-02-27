@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef SRC_TRACE_PROCESSOR_COUNTERS_TABLE_H_
-#define SRC_TRACE_PROCESSOR_COUNTERS_TABLE_H_
+#ifndef SRC_TRACE_PROCESSOR_COUNTER_VALUES_TABLE_H_
+#define SRC_TRACE_PROCESSOR_COUNTER_VALUES_TABLE_H_
 
 #include "src/trace_processor/storage_table.h"
 
@@ -26,53 +26,23 @@
 namespace perfetto {
 namespace trace_processor {
 
-class CountersTable : public StorageTable {
+class CounterValuesTable : public StorageTable {
  public:
   static void RegisterTable(sqlite3* db, const TraceStorage* storage);
 
-  CountersTable(sqlite3*, const TraceStorage*);
+  CounterValuesTable(sqlite3*, const TraceStorage*);
 
   // StorageTable implementation.
   StorageSchema CreateStorageSchema() override;
   uint32_t RowCount() override;
   int BestIndex(const QueryConstraints&, BestIndexInfo*) override;
 
-  class RefColumn final : public StorageColumn {
-   public:
-    RefColumn(std::string col_name,
-              const std::deque<int64_t>* refs,
-              const std::deque<RefType>* types,
-              const TraceStorage* storage);
-
-    void ReportResult(sqlite3_context* ctx, uint32_t row) const override;
-
-    Bounds BoundFilter(int op, sqlite3_value* sqlite_val) const override;
-
-    void Filter(int op, sqlite3_value* value, FilteredRowIndex*) const override;
-
-    Comparator Sort(const QueryConstraints::OrderBy& ob) const override;
-
-    bool IsNaturallyOrdered() const override { return false; }
-
-    Table::ColumnType GetType() const override {
-      return Table::ColumnType::kLong;
-    }
-
-   private:
-    int CompareRefsAsc(uint32_t f, uint32_t s) const;
-
-    const std::deque<int64_t>* refs_;
-    const std::deque<RefType>* types_;
-    const TraceStorage* storage_ = nullptr;
-  };
-
  private:
   uint32_t EstimateCost(const QueryConstraints&);
 
-  std::deque<std::string> ref_types_;
   const TraceStorage* const storage_;
 };
 }  // namespace trace_processor
 }  // namespace perfetto
 
-#endif  // SRC_TRACE_PROCESSOR_COUNTERS_TABLE_H_
+#endif  // SRC_TRACE_PROCESSOR_COUNTER_VALUES_TABLE_H_
