@@ -19,10 +19,18 @@ import {timeToString} from '../common/time';
 import {globals} from './globals';
 import {gridlines} from './gridline_helper';
 import {Panel, PanelSize} from './panel';
+import {TRACK_SHELL_WIDTH} from './track_constants';
 
 export class TimeAxisPanel extends Panel {
   view() {
-    return m('.time-axis-panel');
+    return m(
+        '.time-axis-panel',
+        m('.time-offset',
+          `${
+             timeToString(
+                 globals.frontendLocalState.visibleWindowTime.start -
+                 globals.state.traceTime.startSec)
+           }`));
   }
 
 
@@ -32,9 +40,10 @@ export class TimeAxisPanel extends Panel {
     ctx.font = '10px Google Sans';
     ctx.fillStyle = '#999';
 
+    ctx.fillRect(TRACK_SHELL_WIDTH - 1, 0, 2, size.height);
     for (const [x, time] of gridlines(size.width, range, timeScale)) {
       ctx.fillRect(x, 0, 1, size.height);
-      ctx.fillText(timeToString(time - range.start), x + 5, 10);
+      ctx.fillText('+' + timeToString(time - range.start), x + 5, 10);
     }
   }
 }
