@@ -45,6 +45,7 @@
 #include "perfetto/base/logging.h"
 #include "perfetto/base/scoped_file.h"
 #include "perfetto/base/string_utils.h"
+#include "perfetto/base/task_runner.h"
 #include "src/profiling/memory/wire_protocol.h"
 
 namespace perfetto {
@@ -215,49 +216,109 @@ bool DoUnwind(WireMessage* msg, UnwindingMetadata* metadata, AllocRecord* out) {
   return true;
 }
 
-bool HandleUnwindingRecord(UnwindingRecord* rec, BookkeepingRecord* out) {
-  WireMessage msg;
-  if (!ReceiveWireMessage(reinterpret_cast<char*>(rec->data.get()), rec->size,
-                          &msg))
-    return false;
-  if (msg.record_type == RecordType::Malloc) {
-    std::shared_ptr<UnwindingMetadata> metadata = rec->metadata.lock();
-    if (!metadata) {
-      // Process has already gone away.
-      return false;
-    }
+void UnwinderThread::OnDisconnect(base::UnixSocket* self) {
+  auto it = socket_data_.find(self->peer_pid());
+  if (it == socket_data_.end()) {
+    PERFETTO_DFATAL("Disconnected unexpecter socket.");
+    return;
+  }
+  SocketData& socket_data = it->second;
+  DataSourceInstanceID ds_id = socket_data.data_source_instance_id;
+  socket_data_.erase(it);
+  delegate_->PostSocketDisconnected(ds_id, self->peer_pid());
+}
 
-    out->alloc_record.alloc_metadata = *msg.alloc_header;
-    out->pid = rec->pid;
-    out->client_generation = msg.alloc_header->client_generation;
-    out->record_type = BookkeepingRecord::Type::Malloc;
-    DoUnwind(&msg, metadata.get(), &out->alloc_record);
-    return true;
-  } else if (msg.record_type == RecordType::Free) {
-    out->record_type = BookkeepingRecord::Type::Free;
-    out->pid = rec->pid;
-    out->client_generation = msg.free_header->client_generation;
-    // We need to keep this alive, because msg.free_header is a pointer into
-    // this.
-    out->free_record.free_data = std::move(rec->data);
-    out->free_record.metadata = msg.free_header;
-    return true;
-  } else {
-    PERFETTO_DFATAL("Invalid record type.");
-    return false;
+void UnwinderThread::OnDataAvailable(base::UnixSocket* self) {
+  auto it = socket_data_.find(self->peer_pid());
+  if (it == socket_data_.end()) {
+    PERFETTO_DFATAL("Unexpected data.");
+    return;
+  }
+
+  SocketData& socket_data = it->second;
+  SharedRingBuffer& shmem = socket_data.shmem;
+  SharedRingBuffer::Buffer buf;
+
+  for (;;) {
+    buf = shmem.BeginRead();
+    if (!buf)
+      break;
+    HandleBuffer(&buf, &socket_data);
+    shmem.EndRead(std::move(buf));
   }
 }
 
-void UnwindingMainLoop(BoundedQueue<UnwindingRecord>* input_queue,
-                       BoundedQueue<BookkeepingRecord>* output_queue) {
-  for (;;) {
-    UnwindingRecord rec;
-    if (!input_queue->Get(&rec))
-      return;
-    BookkeepingRecord out;
-    if (HandleUnwindingRecord(&rec, &out))
-      output_queue->Add(std::move(out));
+void UnwinderThread::HandleBuffer(SharedRingBuffer::Buffer* buf,
+                                  SocketData* socket_data) {
+  WireMessage msg;
+  // TODO(fmayer): standardise on char* or uint8_t*.
+  // char* has stronger guarantees regarding aliasing.
+  // see https://timsong-cpp.github.io/cppwp/n3337/basic.lval#10.8
+  if (!ReceiveWireMessage(reinterpret_cast<char*>(buf->data), buf->size,
+                          &msg)) {
+    PERFETTO_DFATAL("Failed to receive wire message.");
+    return;
   }
+
+  if (msg.record_type == RecordType::Malloc) {
+    AllocRecord rec;
+    rec.alloc_metadata = *msg.alloc_header;
+    rec.pid = socket_data->sock->peer_pid();
+    rec.data_source_instance_id = socket_data->data_source_instance_id;
+    DoUnwind(&msg, &socket_data->metadata, &rec);
+    delegate_->PostAllocRecord(std::move(rec));
+  } else if (msg.record_type == RecordType::Free) {
+    FreeRecord rec;
+    rec.pid = socket_data->sock->peer_pid();
+    rec.data_source_instance_id = socket_data->data_source_instance_id;
+    // We need to copy this, so we can return the memory to the shmem buffer.
+    memcpy(&rec.metadata, msg.free_header, sizeof(*msg.free_header));
+    delegate_->PostFreeRecord(std::move(rec));
+  } else {
+    PERFETTO_DFATAL("Invalid record type.");
+  }
+}
+
+void UnwinderThread::PostHandoffSocket(HandoffData handoff_data) {
+  // Even with C++14, this cannot be moved, as std::function has to be
+  // copyable, which HandoffData is not.
+  HandoffData* raw_data = new HandoffData(std::move(handoff_data));
+  task_runner_->PostTask([this, raw_data] {
+    HandoffData data = std::move(*raw_data);
+    delete raw_data;
+    HandleHandoffSocket(std::move(data));
+  });
+}
+
+void UnwinderThread::HandleHandoffSocket(HandoffData handoff_data) {
+  auto sock = base::UnixSocket::AdoptConnected(handoff_data.sock.ReleaseFd(),
+                                               this, this->task_runner_,
+                                               base::SockType::kStream);
+  pid_t peer_pid = sock->peer_pid();
+
+  auto ring_buf =
+      SharedRingBuffer::Attach(std::move(handoff_data.fds[kHandshakeShmem]));
+  if (!ring_buf) {
+    PERFETTO_DFATAL("Failed to create shared ring buffer.");
+    return;
+  }
+
+  UnwindingMetadata metadata(peer_pid,
+                             std::move(handoff_data.fds[kHandshakeMaps]),
+                             std::move(handoff_data.fds[kHandshakeMem]));
+  SocketData socket_data{
+      handoff_data.data_source_instance_id, std::move(sock),
+      std::move(metadata), std::move(ring_buf.value()),
+  };
+  socket_data_.emplace(peer_pid, std::move(socket_data));
+}
+
+void UnwinderThread::PostDisconnectSocket(pid_t pid) {
+  task_runner_->PostTask([this, pid] { HandleDisconnectSocket(pid); });
+}
+
+void UnwinderThread::HandleDisconnectSocket(pid_t pid) {
+  socket_data_.erase(pid);
 }
 
 }  // namespace profiling

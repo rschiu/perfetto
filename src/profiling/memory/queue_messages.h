@@ -38,9 +38,9 @@ struct UnwindingRecord {
 };
 
 struct FreeRecord {
-  std::unique_ptr<uint8_t[]> free_data;
-  // This is a pointer into free_data.
-  FreeMetadata* metadata;
+  pid_t pid;
+  uint64_t data_source_instance_id;
+  FreeMetadata metadata;
 };
 
 // A wrapper of libunwindstack FrameData that also includes the build_id.
@@ -53,6 +53,8 @@ struct FrameData {
 };
 
 struct AllocRecord {
+  pid_t pid;
+  uint64_t data_source_instance_id;
   AllocMetadata alloc_metadata;
   std::vector<FrameData> frames;
 };
@@ -70,7 +72,6 @@ struct BookkeepingRecord {
     Free = 2,
   };
   pid_t pid;
-  uint64_t client_generation;
   // TODO(fmayer): Use a union.
   Type record_type;
   AllocRecord alloc_record;

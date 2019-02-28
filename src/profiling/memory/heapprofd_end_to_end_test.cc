@@ -173,7 +173,7 @@ class HeapprofdEndToEnd : public ::testing::Test {
     auto helper = GetHelper(&task_runner);
 
     helper->StartTracing(trace_config);
-    helper->WaitForTracingDisabled(10000);
+    helper->WaitForTracingDisabled(20000);
 
     helper->ReadData();
     helper->WaitForReadData();
@@ -412,7 +412,7 @@ TEST_F(HeapprofdEndToEnd, ReInit) {
   // TODO(rsavitski): this sleep is to compensate for the heapprofd delaying in
   // closing the sockets (and therefore the client noticing that the session is
   // over). Clarify where the delays are coming from.
-  usleep(100 * kMsToUs);
+  usleep(500 * kMsToUs);
 
   PERFETTO_LOG("HeapprofdEndToEnd::Reinit: Starting second");
   TraceAndValidate(trace_config, pid, kSecondIterationBytes);

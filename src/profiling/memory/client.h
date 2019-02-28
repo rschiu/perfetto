@@ -26,80 +26,28 @@
 
 #include "perfetto/base/unix_socket.h"
 #include "src/profiling/memory/sampler.h"
+#include "src/profiling/memory/shared_ring_buffer.h"
 #include "src/profiling/memory/wire_protocol.h"
 
 namespace perfetto {
 namespace profiling {
 
-class BorrowedSocket;
-
-class SocketPool {
- public:
-  friend class BorrowedSocket;
-  SocketPool(std::vector<base::UnixSocketRaw> sockets);
-
-  BorrowedSocket Borrow();
-  void Shutdown();
-
- private:
-  bool shutdown_ = false;
-
-  void Return(base::UnixSocketRaw);
-  std::timed_mutex mutex_;
-  std::condition_variable_any cv_;
-  std::vector<base::UnixSocketRaw> sockets_;
-  size_t available_sockets_;
-  size_t dead_sockets_ = 0;
-};
-
-// Socket borrowed from a SocketPool. Gets returned once it goes out of scope.
-class BorrowedSocket {
- public:
-  BorrowedSocket(const BorrowedSocket&) = delete;
-  BorrowedSocket& operator=(const BorrowedSocket&) = delete;
-  BorrowedSocket(BorrowedSocket&& other) noexcept
-      : sock_(std::move(other.sock_)), socket_pool_(other.socket_pool_) {
-    other.socket_pool_ = nullptr;
-  }
-
-  BorrowedSocket(base::UnixSocketRaw sock, SocketPool* socket_pool)
-      : sock_(std::move(sock)), socket_pool_(socket_pool) {}
-
-  ~BorrowedSocket() {
-    if (socket_pool_ != nullptr)
-      socket_pool_->Return(std::move(sock_));
-  }
-
-  base::UnixSocketRaw* operator->() { return &sock_; }
-  base::UnixSocketRaw* get() { return &sock_; }
-  void Shutdown() { sock_.Shutdown(); }
-  explicit operator bool() const { return !!sock_; }
-
- private:
-  base::UnixSocketRaw sock_;
-  SocketPool* socket_pool_ = nullptr;
-};
+class Client;
 
 // Cache for frees that have been observed. It is infeasible to send every
 // free separately, so we batch and send the whole buffer once it is full.
 class FreePage {
  public:
-  FreePage(uint64_t client_generation) {
-    free_page_.client_generation = client_generation;
-  }
+  FreePage() { free_page_.num_entries = 0; }
 
   // Add address to buffer. Flush if necessary using a socket borrowed from
   // pool.
   // Can be called from any thread. Must not hold mutex_.
-  bool Add(const uint64_t addr, uint64_t sequence_number, SocketPool* pool);
+  bool Add(const uint64_t addr, uint64_t sequence_number, Client* client);
 
  private:
-  // Needs to be called holding mutex_.
-  bool FlushLocked(SocketPool* pool);
-
   FreeMetadata free_page_;
   std::timed_mutex mutex_;
-  size_t offset_ = 0;
 };
 
 const char* GetThreadStackBase();
@@ -115,13 +63,14 @@ constexpr uint32_t kClientSockTimeoutMs = 1000;
 // the caller needs to synchronize calls behind a mutex or similar.
 class Client {
  public:
-  Client(std::vector<base::UnixSocketRaw> sockets);
-  Client(const std::string& sock_name, size_t conns);
+  Client(base::Optional<base::UnixSocketRaw> sock);
+  Client(const std::string& sock_name);
   bool RecordMalloc(uint64_t alloc_size,
                     uint64_t total_size,
                     uint64_t alloc_address);
   bool RecordFree(uint64_t alloc_address);
   void Shutdown();
+  bool FlushFrees(FreeMetadata* free_metadata);
 
   // Returns the number of bytes to assign to an allocation with the given
   // |alloc_size|, based on the current sampling rate. A return value of zero
@@ -153,10 +102,11 @@ class Client {
   ClientConfiguration client_config_;
   // sampler_ operations are not thread-safe.
   Sampler sampler_;
-  SocketPool socket_pool_;
+  base::Optional<base::UnixSocketRaw> sock_;
   FreePage free_page_;
   const char* main_thread_stack_base_ = nullptr;
   std::atomic<uint64_t> sequence_number_{0};
+  base::Optional<SharedRingBuffer> shmem_;
 };
 
 }  // namespace profiling

@@ -31,18 +31,22 @@
 namespace perfetto {
 namespace profiling {
 namespace {
+using ::perfetto::protos::pbzero::ProfilePacket;
+
 constexpr char kHeapprofdDataSource[] = "android.heapprofd";
-constexpr size_t kUnwinderQueueSize = 1000;
-constexpr size_t kBookkeepingQueueSize = 1000;
 constexpr size_t kUnwinderThreads = 5;
 constexpr int kHeapprofdSignal = 36;
 
 constexpr uint32_t kInitialConnectionBackoffMs = 100;
 constexpr uint32_t kMaxConnectionBackoffMs = 30 * 1000;
 
+// TODO(fmayer): Add to HeapprofdConfig.
+constexpr uint64_t kShmemSize = 8 * 1048576;  // ~8 MB
+
 ClientConfiguration MakeClientConfiguration(const DataSourceConfig& cfg) {
   ClientConfiguration client_config;
   client_config.interval = cfg.heapprofd_config().sampling_interval_bytes();
+  client_config.shmem_size = kShmemSize;
   return client_config;
 }
 
@@ -77,12 +81,11 @@ HeapprofdProducer::HeapprofdProducer(HeapprofdMode mode,
                                      base::TaskRunner* task_runner)
     : mode_(mode),
       task_runner_(task_runner),
-      bookkeeping_queue_("Bookkeeping", kBookkeepingQueueSize),
-      bookkeeping_th_([this] { bookkeeping_thread_.Run(&bookkeeping_queue_); }),
-      unwinder_queues_(MakeUnwinderQueues(kUnwinderThreads)),
+      unwinding_task_runners_(kUnwinderThreads),
       unwinding_threads_(MakeUnwindingThreads(kUnwinderThreads)),
-      socket_listener_(MakeSocketListenerCallback(), &bookkeeping_thread_),
+      unwinder_threads_(MakeUnwinderThreads(kUnwinderThreads)),
       target_pid_(base::kInvalidPid),
+      socket_delegate_(this),
       weak_factory_(this) {
   if (mode == HeapprofdMode::kCentral) {
     listening_socket_ = MakeListeningSocket();
@@ -90,14 +93,10 @@ HeapprofdProducer::HeapprofdProducer(HeapprofdMode mode,
 }
 
 HeapprofdProducer::~HeapprofdProducer() {
-  bookkeeping_queue_.Shutdown();
-  for (auto& queue : unwinder_queues_) {
-    queue.Shutdown();
-  }
-  bookkeeping_th_.join();
-  for (std::thread& th : unwinding_threads_) {
+  for (auto& task_runner : unwinding_task_runners_)
+    task_runner.Quit();
+  for (std::thread& th : unwinding_threads_)
     th.join();
-  }
 }
 
 void HeapprofdProducer::SetTargetProcess(pid_t target_pid,
@@ -137,7 +136,7 @@ void HeapprofdProducer::AdoptConnectedSockets(
         return;
 
       auto socket = base::UnixSocket::AdoptConnected(
-          base::ScopedFile(fd), &weak_producer->socket_listener_,
+          base::ScopedFile(fd), &weak_producer->socket_delegate_,
           weak_producer->task_runner_, base::SockType::kStream);
 
       // The forked heapprofd will not normally be able to read the target's
@@ -145,8 +144,8 @@ void HeapprofdProducer::AdoptConnectedSockets(
       Process process{weak_producer->target_pid_,
                       weak_producer->target_cmdline_};
 
-      weak_producer->socket_listener_.HandleClientConnection(
-          std::move(socket), std::move(process));
+      weak_producer->HandleClientConnection(std::move(socket),
+                                            std::move(process));
     });
   }
 }
@@ -223,20 +222,9 @@ void HeapprofdProducer::SetupDataSource(DataSourceInstanceID id,
   }
 
   DataSource data_source;
-
-  ProcessSetSpec process_set_spec{};
-  process_set_spec.all = heapprofd_config.all();
-  process_set_spec.client_configuration = MakeClientConfiguration(cfg);
-  process_set_spec.pids.insert(heapprofd_config.pid().cbegin(),
-                               heapprofd_config.pid().cend());
-  process_set_spec.process_cmdline.insert(
-      heapprofd_config.process_cmdline().cbegin(),
-      heapprofd_config.process_cmdline().cend());
-
-  data_source.processes =
-      socket_listener_.process_matcher().AwaitProcessSetSpec(
-          std::move(process_set_spec));
-
+  data_source.id = id;
+  data_source.client_configuration = MakeClientConfiguration(cfg);
+  data_source.config = heapprofd_config;
   auto buffer_id = static_cast<BufferID>(cfg.target_buffer());
   data_source.trace_writer = endpoint_->CreateTraceWriter(buffer_id);
 
@@ -332,6 +320,21 @@ void HeapprofdProducer::StopDataSource(DataSourceInstanceID id) {
   // DataSource holds ProfilingSession handles which on being destructed tear
   // down the profiling on the client.
 
+  auto it = data_sources_.find(id);
+  if (it == data_sources_.end()) {
+    if (mode_ == HeapprofdMode::kCentral)
+      PERFETTO_DFATAL("Trying to stop non existing data source: %" PRIu64, id);
+    return;
+  }
+
+  DataSource& data_source = it->second;
+  for (const auto& pid_and_heap_tracker : data_source.heap_trackers) {
+    pid_t pid = pid_and_heap_tracker.first;
+    UnwinderForPID(pid).PostDisconnectSocket(pid);
+  }
+
+  data_sources_.erase(it);
+
   if (mode_ == HeapprofdMode::kChild) {
     if (data_sources_.erase(id) == 1) {
       PERFETTO_DLOG("Child mode exiting due to stopped data source.");
@@ -349,34 +352,47 @@ void HeapprofdProducer::OnTracingSetup() {}
 bool HeapprofdProducer::Dump(DataSourceInstanceID id,
                              FlushRequestID flush_id,
                              bool has_flush_id) {
-  PERFETTO_DLOG("Dumping %" PRIu64 ", flush: %d", id, has_flush_id);
   auto it = data_sources_.find(id);
   if (it == data_sources_.end()) {
+    PERFETTO_LOG("Invalid data source.");
     return false;
   }
+  DataSource& data_source = it->second;
 
-  const DataSource& data_source = it->second;
-  BookkeepingRecord record{};
-  record.record_type = BookkeepingRecord::Type::Dump;
-  DumpRecord& dump_record = record.dump_record;
-  std::set<pid_t> pids = data_source.processes.GetPIDs();
-  dump_record.pids.insert(dump_record.pids.begin(), pids.cbegin(), pids.cend());
-  dump_record.trace_writer = data_source.trace_writer;
+  DumpState dump_state(data_source.trace_writer.get(), &next_index_);
 
-  auto weak_producer = weak_factory_.GetWeakPtr();
-  base::TaskRunner* task_runner = task_runner_;
-  if (has_flush_id) {
-    dump_record.callback = [task_runner, weak_producer, flush_id] {
-      task_runner->PostTask([weak_producer, flush_id] {
-        if (weak_producer)
-          return weak_producer->FinishDataSourceFlush(flush_id);
-      });
-    };
-  } else {
-    dump_record.callback = [] {};
+  for (std::pair<const pid_t, HeapTracker>& pid_and_heap_tracker :
+       data_source.heap_trackers) {
+    pid_t pid = pid_and_heap_tracker.first;
+    HeapTracker& heap_tracker = pid_and_heap_tracker.second;
+    heap_tracker.Dump(pid, &dump_state);
   }
 
-  bookkeeping_queue_.Add(std::move(record));
+  for (GlobalCallstackTrie::Node* node : dump_state.callstacks_to_dump) {
+    // There need to be two separate loops over built_callstack because
+    // protozero cannot interleave different messages.
+    auto built_callstack = callsites_.BuildCallstack(node);
+    for (const Interned<Frame>& frame : built_callstack)
+      dump_state.WriteFrame(frame);
+    ProfilePacket::Callstack* callstack =
+        dump_state.current_profile_packet->add_callstacks();
+    callstack->set_id(node->id());
+    for (const Interned<Frame>& frame : built_callstack)
+      callstack->add_frame_ids(frame.id());
+  }
+
+  dump_state.current_trace_packet->Finalize();
+  if (has_flush_id) {
+    auto weak_producer = weak_factory_.GetWeakPtr();
+    auto callback = [weak_producer, flush_id] {
+      if (!weak_producer)
+        return weak_producer->task_runner_->PostTask([weak_producer, flush_id] {
+          if (weak_producer)
+            return weak_producer->FinishDataSourceFlush(flush_id);
+        });
+    };
+    data_source.trace_writer->Flush(std::move(callback));
+  }
   return true;
 }
 
@@ -406,30 +422,18 @@ void HeapprofdProducer::FinishDataSourceFlush(FlushRequestID flush_id) {
   }
 }
 
-std::function<void(UnwindingRecord)>
-HeapprofdProducer::MakeSocketListenerCallback() {
-  return [this](UnwindingRecord record) {
-    unwinder_queues_[static_cast<size_t>(record.pid) % kUnwinderThreads].Add(
-        std::move(record));
-  };
-}
-
-std::vector<BoundedQueue<UnwindingRecord>>
-HeapprofdProducer::MakeUnwinderQueues(size_t n) {
-  std::vector<BoundedQueue<UnwindingRecord>> ret(n);
+std::vector<std::thread> HeapprofdProducer::MakeUnwindingThreads(size_t n) {
+  std::vector<std::thread> ret;
   for (size_t i = 0; i < n; ++i) {
-    ret[i].SetCapacity(kUnwinderQueueSize);
-    ret[i].SetName("Unwinder " + std::to_string(n));
+    ret.emplace_back([this, i] { unwinding_task_runners_[i].Run(); });
   }
   return ret;
 }
 
-std::vector<std::thread> HeapprofdProducer::MakeUnwindingThreads(size_t n) {
-  std::vector<std::thread> ret;
+std::vector<UnwinderThread> HeapprofdProducer::MakeUnwinderThreads(size_t n) {
+  std::vector<UnwinderThread> ret;
   for (size_t i = 0; i < n; ++i) {
-    ret.emplace_back([this, i] {
-      UnwindingMainLoop(&unwinder_queues_[i], &bookkeeping_queue_);
-    });
+    ret.emplace_back(this, &unwinding_task_runners_[i]);
   }
   return ret;
 }
@@ -438,7 +442,7 @@ std::unique_ptr<base::UnixSocket> HeapprofdProducer::MakeListeningSocket() {
   const char* sock_fd = getenv(kHeapprofdSocketEnvVar);
   if (sock_fd == nullptr) {
     unlink(kHeapprofdSocketFile);
-    return base::UnixSocket::Listen(kHeapprofdSocketFile, &socket_listener_,
+    return base::UnixSocket::Listen(kHeapprofdSocketFile, &socket_delegate_,
                                     task_runner_);
   }
   char* end;
@@ -446,7 +450,7 @@ std::unique_ptr<base::UnixSocket> HeapprofdProducer::MakeListeningSocket() {
   if (*end != '\0')
     PERFETTO_FATAL("Invalid %s. Expected decimal integer.",
                    kHeapprofdSocketEnvVar);
-  return base::UnixSocket::Listen(base::ScopedFile(raw_fd), &socket_listener_,
+  return base::UnixSocket::Listen(base::ScopedFile(raw_fd), &socket_delegate_,
                                   task_runner_);
 }
 
@@ -513,6 +517,186 @@ __attribute__((noreturn)) void HeapprofdProducer::TerminateProcess(
     int exit_status) {
   PERFETTO_CHECK(mode_ == HeapprofdMode::kChild);
   exit(exit_status);
+}
+
+void HeapprofdProducer::SocketDelegate::OnDisconnect(base::UnixSocket* self) {
+  auto it = producer_->pending_processes_.find(self->peer_pid());
+  if (it == producer_->pending_processes_.end()) {
+    PERFETTO_DFATAL("Unexpected disconnect.");
+    return;
+  }
+
+  if (self == it->second.sock.get())
+    producer_->pending_processes_.erase(it);
+}
+
+void HeapprofdProducer::SocketDelegate::OnNewIncomingConnection(
+    base::UnixSocket*,
+    std::unique_ptr<base::UnixSocket> new_connection) {
+  Process peer_process;
+  peer_process.pid = new_connection->peer_pid();
+  if (!GetCmdlineForPID(peer_process.pid, &peer_process.cmdline))
+    PERFETTO_ELOG("Failed to get cmdline for %d", peer_process.pid);
+
+  producer_->HandleClientConnection(std::move(new_connection), peer_process);
+}
+
+UnwinderThread& HeapprofdProducer::UnwinderForPID(pid_t pid) {
+  return unwinder_threads_[static_cast<uint64_t>(pid) % kUnwinderThreads];
+}
+
+void HeapprofdProducer::SocketDelegate::OnDataAvailable(
+    base::UnixSocket* self) {
+  auto it = producer_->pending_processes_.find(self->peer_pid());
+  if (it == producer_->pending_processes_.end()) {
+    PERFETTO_DFATAL("Unexpected data.");
+    return;
+  }
+
+  PendingProcess& pending_process = it->second;
+
+  base::ScopedFile fds[kHandshakeSize];
+  char buf[1];
+  self->Receive(buf, sizeof(buf), fds, base::ArraySize(fds));
+
+  if (fds[0] && fds[1] && fds[2]) {
+    PERFETTO_DLOG("%d: Received FDs.", self->peer_pid());
+    self->Send(buf, sizeof(buf), -1, base::UnixSocket::BlockingMode::kBlocking);
+
+    UnwinderThread::HandoffData handoff_data;
+    handoff_data.data_source_instance_id =
+        pending_process.data_source_instance_id;
+    handoff_data.sock = self->ReleaseSocket();
+    for (size_t i = 0; i < kHandshakeSize; ++i)
+      handoff_data.fds[i] = std::move(fds[i]);
+
+    auto ds_it =
+        producer_->data_sources_.find(pending_process.data_source_instance_id);
+    if (ds_it == producer_->data_sources_.end())
+      return;
+
+    DataSource& data_source = ds_it->second;
+    data_source.heap_trackers.emplace(self->peer_pid(), &producer_->callsites_);
+
+    producer_->UnwinderForPID(self->peer_pid())
+        .PostHandoffSocket(std::move(handoff_data));
+    producer_->pending_processes_.erase(it);
+  } else if (fds[0] || fds[1] || fds[2]) {
+    PERFETTO_DFATAL("%d: Received partial FDs.", self->peer_pid());
+    producer_->pending_processes_.erase(it);
+  } else {
+    PERFETTO_DLOG("%d: Received no FDs.", self->peer_pid());
+  }
+}
+
+HeapprofdProducer::DataSource* HeapprofdProducer::GetDataSourceForProcess(
+    const Process& proc) {
+  for (auto& ds_id_and_datasource : data_sources_) {
+    DataSource& ds = ds_id_and_datasource.second;
+    for (uint64_t pid : ds.config.pid()) {
+      if (static_cast<pid_t>(pid) == proc.pid)
+        return &ds;
+    }
+    for (const std::string& cmdline : ds.config.process_cmdline()) {
+      if (cmdline == proc.cmdline)
+        return &ds;
+    }
+  }
+  return nullptr;
+}
+
+void HeapprofdProducer::HandleClientConnection(
+    std::unique_ptr<base::UnixSocket> new_connection,
+    Process process) {
+  DataSource* data_source = GetDataSourceForProcess(process);
+  if (!data_source) {
+    PERFETTO_LOG("No data source found.");
+    return;
+  }
+
+  new_connection->Send(&data_source->client_configuration,
+                       sizeof(data_source->client_configuration), -1,
+                       base::UnixSocket::BlockingMode::kBlocking);
+  pid_t peer_pid = new_connection->peer_pid();
+  PendingProcess pending_process;
+  pending_process.sock = std::move(new_connection);
+  pending_process.data_source_instance_id = data_source->id;
+  pending_processes_.emplace(peer_pid, std::move(pending_process));
+}
+
+void HeapprofdProducer::PostAllocRecord(AllocRecord alloc_rec) {
+  // Once we can use C++14, this should be std::moved into the lambda instead.
+  AllocRecord* raw_alloc_rec = new AllocRecord(std::move(alloc_rec));
+  task_runner_->PostTask(
+      [this, raw_alloc_rec] { HandleAllocRecord(std::move(*raw_alloc_rec)); });
+}
+
+void HeapprofdProducer::PostFreeRecord(FreeRecord free_rec) {
+  // Once we can use C++14, this should be std::moved into the lambda instead.
+  FreeRecord* raw_free_rec = new FreeRecord(std::move(free_rec));
+  task_runner_->PostTask(
+      [this, raw_free_rec] { HandleFreeRecord(std::move(*raw_free_rec)); });
+}
+
+void HeapprofdProducer::PostSocketDisconnected(DataSourceInstanceID ds_id,
+                                               pid_t pid) {
+  task_runner_->PostTask(
+      [this, ds_id, pid] { HandleSocketDisconnected(ds_id, pid); });
+}
+
+void HeapprofdProducer::HandleAllocRecord(AllocRecord alloc_rec) {
+  const AllocMetadata& alloc_metadata = alloc_rec.alloc_metadata;
+  auto it = data_sources_.find(alloc_rec.data_source_instance_id);
+  if (it == data_sources_.end()) {
+    PERFETTO_LOG("Invalid data source in alloc record.");
+    return;
+  }
+
+  DataSource& ds = it->second;
+  auto heap_tracker_it = ds.heap_trackers.find(alloc_rec.pid);
+  if (heap_tracker_it == ds.heap_trackers.end()) {
+    PERFETTO_LOG("Invalid PID in alloc record.");
+    return;
+  }
+
+  HeapTracker& heap_tracker = heap_tracker_it->second;
+
+  heap_tracker.RecordMalloc(alloc_rec.frames, alloc_metadata.alloc_address,
+                            alloc_metadata.total_size,
+                            alloc_metadata.sequence_number);
+}
+
+void HeapprofdProducer::HandleFreeRecord(FreeRecord free_rec) {
+  const FreeMetadata& free_metadata = free_rec.metadata;
+  auto it = data_sources_.find(free_rec.data_source_instance_id);
+  if (it == data_sources_.end()) {
+    PERFETTO_LOG("Invalid data source in free record.");
+    return;
+  }
+
+  DataSource& ds = it->second;
+  auto heap_tracker_it = ds.heap_trackers.find(free_rec.pid);
+  if (heap_tracker_it == ds.heap_trackers.end()) {
+    PERFETTO_LOG("Invalid PID in free record.");
+    return;
+  }
+
+  HeapTracker& heap_tracker = heap_tracker_it->second;
+
+  const FreePageEntry* entries = free_metadata.entries;
+  uint64_t num_entries = free_metadata.num_entries;
+  if (num_entries > kFreePageSize)
+    return;
+  for (size_t i = 0; i < num_entries; ++i) {
+    const FreePageEntry& entry = entries[i];
+    heap_tracker.RecordFree(entry.addr, entry.sequence_number);
+  }
+}
+
+void HeapprofdProducer::HandleSocketDisconnected(DataSourceInstanceID, pid_t) {
+  // TODO(fmayer): Dump on process disconnect rather than data source
+  // destruction. This prevents us needing to hold onto the bookkeeping data
+  // after the process disconnected.
 }
 
 }  // namespace profiling

@@ -26,9 +26,7 @@
 #include "perfetto/base/event.h"
 #include "perfetto/base/scoped_file.h"
 #include "perfetto/base/unix_socket.h"
-#include "src/profiling/memory/bounded_queue.h"
 #include "src/profiling/memory/heapprofd_producer.h"
-#include "src/profiling/memory/socket_listener.h"
 #include "src/profiling/memory/wire_protocol.h"
 #include "src/tracing/ipc/default_socket.h"
 
