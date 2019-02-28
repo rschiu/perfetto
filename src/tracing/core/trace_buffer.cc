@@ -543,7 +543,8 @@ void TraceBuffer::SequenceIterator::MoveNext() {
 
 bool TraceBuffer::ReadNextTracePacket(
     TracePacket* packet,
-    PacketSequenceProperties* sequence_properties) {
+    PacketSequenceProperties* sequence_properties,
+    bool* previous_packet_on_sequence_dropped) {
   // Note: MoveNext() moves only within the next chunk within the same
   // {ProducerID, WriterID} sequence. Here we want to:
   // - return the next patched+complete packet in the current sequence, if any.
@@ -553,6 +554,12 @@ bool TraceBuffer::ReadNextTracePacket(
 
   // Just in case we forget to initialize these below.
   *sequence_properties = {0, kInvalidUid, 0};
+
+  // At the start of each sequence iteration, we consider the last read packet
+  // dropped. While iterating over the chunks in the sequence, we update this
+  // flag based on our knowledge about the last packet that was read from each
+  // chunk (|last_read_packet_skipped| in ChunkMeta).
+  bool previous_packet_dropped = true;
 
 #if PERFETTO_DCHECK_IS_ON()
   PERFETTO_DCHECK(!changed_since_last_read_);
@@ -570,6 +577,7 @@ bool TraceBuffer::ReadNextTracePacket(
       // GetReadIterForSequence() knows how to deal with that.
       read_iter_ = GetReadIterForSequence(read_iter_.seq_end);
       PERFETTO_DCHECK(read_iter_.is_valid() && read_iter_.cur != index_.end());
+      previous_packet_dropped = true;
     }
 
     ChunkMeta* chunk_meta = &*read_iter_;
@@ -611,6 +619,13 @@ bool TraceBuffer::ReadNextTracePacket(
 
     PERFETTO_DCHECK(chunk_meta->num_fragments_read <=
                     chunk_meta->num_fragments);
+
+    // If we didn't read any packets from this chunk, the last packet was from
+    // the previous chunk we iterated over; so don't update
+    // |previous_packet_dropped| in this case.
+    if (chunk_meta->num_fragments_read > 0)
+      previous_packet_dropped = chunk_meta->last_read_packet_skipped;
+
     while (chunk_meta->num_fragments_read < chunk_meta->num_fragments) {
       enum { kSkip = 0, kReadOnePacket, kTryReadAhead } action;
       if (chunk_meta->num_fragments_read == 0) {
@@ -640,6 +655,8 @@ bool TraceBuffer::ReadNextTracePacket(
         // incrementing the |num_fragments_read| and marking the fragment as
         // read even if we didn't really.
         ReadNextPacketInChunk(chunk_meta, nullptr);
+        chunk_meta->last_read_packet_skipped = true;
+        previous_packet_dropped = true;
         continue;
       }
 
@@ -647,6 +664,7 @@ bool TraceBuffer::ReadNextTracePacket(
         // The easy peasy case B.
         if (PERFETTO_LIKELY(ReadNextPacketInChunk(chunk_meta, packet))) {
           *sequence_properties = {trusted_producer_id, trusted_uid, writer_id};
+          *previous_packet_on_sequence_dropped = previous_packet_dropped;
           return true;
         }
 
@@ -655,6 +673,8 @@ bool TraceBuffer::ReadNextTracePacket(
         // sequence but just skip the chunk and move on.
         stats_.set_abi_violations(stats_.abi_violations() + 1);
         PERFETTO_DCHECK(suppress_sanity_dchecks_for_testing_);
+        chunk_meta->last_read_packet_skipped = true;
+        previous_packet_dropped = true;
         break;
       }
 
@@ -663,11 +683,12 @@ bool TraceBuffer::ReadNextTracePacket(
       if (ra_res == ReadAheadResult::kSucceededReturnSlices) {
         stats_.set_readaheads_succeeded(stats_.readaheads_succeeded() + 1);
         *sequence_properties = {trusted_producer_id, trusted_uid, writer_id};
+        *previous_packet_on_sequence_dropped = previous_packet_dropped;
         return true;
       }
 
       if (ra_res == ReadAheadResult::kFailedMoveToNextSequence) {
-        // readahead didn't find a contigous packet sequence. We'll try again
+        // readahead didn't find a contiguous packet sequence. We'll try again
         // on the next ReadPacket() call.
         stats_.set_readaheads_failed(stats_.readaheads_failed() + 1);
 
@@ -688,6 +709,8 @@ bool TraceBuffer::ReadNextTracePacket(
       // In this case ReadAhead() might advance |read_iter_|, so we need to
       // re-cache the |chunk_meta| pointer to point to the current chunk.
       chunk_meta = &*read_iter_;
+      chunk_meta->last_read_packet_skipped = true;
+      previous_packet_dropped = true;
     }  // while(...)  [iterate over packet fragments for the current chunk].
   }    // for(;;MoveNext()) [iterate over chunks].
 }
@@ -834,6 +857,7 @@ bool TraceBuffer::ReadNextPacketInChunk(ChunkMeta* chunk_meta,
   if (PERFETTO_LIKELY(packet))
     packet->AddSlice(packet_data, static_cast<size_t>(packet_size));
 
+  chunk_meta->last_read_packet_skipped = false;
   return true;
 }
 

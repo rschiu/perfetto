@@ -1018,7 +1018,9 @@ void TracingServiceImpl::ReadBuffers(TracingSessionID tsid,
     while (!did_hit_threshold) {
       TracePacket packet;
       TraceBuffer::PacketSequenceProperties sequence_properties{};
-      if (!tbuf.ReadNextTracePacket(&packet, &sequence_properties)) {
+      bool previous_packet_dropped;
+      if (!tbuf.ReadNextTracePacket(&packet, &sequence_properties,
+                                    &previous_packet_dropped)) {
         break;
       }
       PERFETTO_DCHECK(sequence_properties.producer_id_trusted != 0);
@@ -1045,6 +1047,7 @@ void TracingServiceImpl::ReadBuffers(TracingSessionID tsid,
           tracing_session->GetPacketSequenceID(
               sequence_properties.producer_id_trusted,
               sequence_properties.writer_id));
+      trusted_packet.set_previous_packet_dropped(previous_packet_dropped);
       static constexpr size_t kTrustedBufSize = 16;
       Slice slice = Slice::Allocate(kTrustedBufSize);
       PERFETTO_CHECK(

@@ -220,7 +220,11 @@ class TraceBuffer {
   // Returns the next packet in the buffer, if any, and the producer_id,
   // producer_uid, and writer_id of the producer/writer that wrote it (as passed
   // in the CopyChunkUntrusted() call). Returns false if no packets can be read
-  // at this point.
+  // at this point. If a packet was read successfully,
+  // |previous_packet_on_sequence_dropped| is set to |true| if the previous
+  // packet on the sequence was dropped from the buffer before it could be read
+  // (e.g. because its chunk was overridden due to the ring buffer wrapping or
+  // due to an ABI violation), and to |false| otherwise.
   //
   // This function returns only complete packets. Specifically:
   // When there is at least one complete packet in the buffer, this function
@@ -242,7 +246,8 @@ class TraceBuffer {
   // But the following is guaranteed to NOT happen:
   //   P1, P5, P7, P4 (P4 cannot come after P5)
   bool ReadNextTracePacket(TracePacket*,
-                           PacketSequenceProperties* sequence_properties);
+                           PacketSequenceProperties* sequence_properties,
+                           bool* previous_packet_on_sequence_dropped);
 
   const TraceStats::BufferStats& stats() const { return stats_; }
   size_t size() const { return size_; }
@@ -363,6 +368,10 @@ class TraceBuffer {
     // false, the chunk was still kChunkBeingWritten while copied. |is_complete|
     // == false prevents the sequence to read past this chunk.
     bool is_complete = false;
+
+    // Wether we skipped the last packet e.g. because we it was a continuation
+    // from a previous chunk that was dropped or due to an ABI violation.
+    bool last_read_packet_skipped = false;
 
     // Correspond to |chunk_record->flags| and |chunk_record->num_fragments|.
     // Copied here for performance reasons (avoids having to dereference
