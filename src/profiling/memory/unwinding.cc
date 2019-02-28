@@ -142,7 +142,7 @@ bool FileDescriptorMaps::Parse() {
             strncmp(name + 5, "ashmem/", 7) != 0) {
           flags |= unwindstack::MAPS_FLAGS_DEVICE_MAP;
         }
-        maps_.push_back(
+        maps_.emplace_back(
             new unwindstack::MapInfo(nullptr, start, end, pgoff, flags, name));
       });
 }
