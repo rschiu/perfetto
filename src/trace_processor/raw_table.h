@@ -32,7 +32,7 @@ class RawTable : public StorageTable {
   // Table implementation.
   StorageSchema CreateStorageSchema() override;
   uint32_t RowCount() override;
-  int BestIndex(const QueryConstraints&, BestIndexInfo*) override;
+  int BestStorageIndex(const QueryConstraints&, BestIndexInfo*) override;
 
  private:
   void FormatSystraceArgs(const std::string& event_name,

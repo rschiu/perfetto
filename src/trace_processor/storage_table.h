@@ -53,11 +53,14 @@ class StorageTable : public Table {
   // Table implementation.
   base::Optional<Table::Schema> Init(int, const char* const*) override final;
   std::unique_ptr<Table::Cursor> CreateCursor(const QueryConstraints&,
-                                              sqlite3_value**) override;
+                                              sqlite3_value**) override final;
+  int BestIndex(const QueryConstraints& qc, BestIndexInfo* info) override final;
 
   // Required methods for subclasses to implement.
   virtual StorageSchema CreateStorageSchema() = 0;
   virtual uint32_t RowCount() = 0;
+  virtual int BestStorageIndex(const QueryConstraints& qc,
+                               BestIndexInfo* info) = 0;
 
  protected:
   const StorageSchema& schema() const { return schema_; }
@@ -68,15 +71,11 @@ class StorageTable : public Table {
   std::unique_ptr<RowIterator> CreateBestRowIterator(const QueryConstraints& qc,
                                                      sqlite3_value** argv);
 
-  FilteredRowIndex CreateRangeIterator(
+  FilteredRowIndex CreateFilteredIndex(
       const std::vector<QueryConstraints::Constraint>& cs,
       sqlite3_value** argv);
 
   std::pair<bool, bool> IsOrdered(
-      const std::vector<QueryConstraints::OrderBy>& obs);
-
-  std::vector<QueryConstraints::OrderBy> RemoveRedundantOrderBy(
-      const std::vector<QueryConstraints::Constraint>& cs,
       const std::vector<QueryConstraints::OrderBy>& obs);
 
   std::vector<uint32_t> CreateSortedIndexVector(

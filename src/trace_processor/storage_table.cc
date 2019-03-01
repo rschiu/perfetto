@@ -27,6 +27,21 @@ base::Optional<Table::Schema> StorageTable::Init(int, const char* const*) {
   return schema_.ToTableSchema();
 }
 
+int StorageTable::BestIndex(const QueryConstraints& qc, BestIndexInfo* info) {
+  for (const auto& c : qc.constraints()) {
+    if (!sqlite_utils::IsOpEq(c.op))
+      continue;
+
+    for (size_t i = 0; i < qc.order_by().size(); i++) {
+      const auto& o = qc.order_by()[i];
+      if (o.iColumn != c.iColumn || o.desc)
+        continue;
+      info->prune_order_by[static_cast<size_t>(c.iColumn)] = true;
+    }
+  }
+  return BestStorageIndex(qc, info);
+}
+
 std::unique_ptr<Table::Cursor> StorageTable::CreateCursor(
     const QueryConstraints& qc,
     sqlite3_value** argv) {
@@ -41,30 +56,31 @@ std::unique_ptr<RowIterator> StorageTable::CreateBestRowIterator(
     const QueryConstraints& qc,
     sqlite3_value** argv) {
   const auto& cs = qc.constraints();
-  auto obs = RemoveRedundantOrderBy(cs, qc.order_by());
 
   // Figure out whether the data is already ordered and which order we should
   // traverse the data.
-  bool is_ordered, is_desc = false;
-  std::tie(is_ordered, is_desc) = IsOrdered(obs);
+  bool no_order_needed, is_desc = false;
+  std::tie(no_order_needed, is_desc) = IsOrdered(qc.order_by());
 
-  // Create the range iterator and if we are sorted, just return it.
-  auto index = CreateRangeIterator(cs, argv);
-  if (!index.error().empty()) {
+  // Create the index and if we are sorted, just return it.
+  auto index = CreateFilteredIndex(cs, argv);
+  if (PERFETTO_UNLIKELY(!index.error().empty())) {
     SetErrorMessage(sqlite3_mprintf(index.error().c_str()));
     return nullptr;
   }
 
-  if (is_ordered)
+  // If either we don't need an ordering from the constraints or there is zero
+  // or one rows, simply return the iterator without sorting.
+  if (no_order_needed || index.HasAtMostOneRowHint())
     return index.ToRowIterator(is_desc);
 
   // Otherwise, create the sorted vector of indices and create the vector
   // iterator.
-  return std::unique_ptr<VectorRowIterator>(
-      new VectorRowIterator(CreateSortedIndexVector(std::move(index), obs)));
+  return std::unique_ptr<VectorRowIterator>(new VectorRowIterator(
+      CreateSortedIndexVector(std::move(index), qc.order_by())));
 }
 
-FilteredRowIndex StorageTable::CreateRangeIterator(
+FilteredRowIndex StorageTable::CreateFilteredIndex(
     const std::vector<QueryConstraints::Constraint>& cs,
     sqlite3_value** argv) {
   // Try and bound the search space to the smallest possible index region and
@@ -72,6 +88,7 @@ FilteredRowIndex StorageTable::CreateRangeIterator(
   uint32_t min_idx = 0;
   uint32_t max_idx = RowCount();
   std::vector<size_t> bitvector_cs;
+  bitvector_cs.reserve(cs.size());
   for (size_t i = 0; i < cs.size(); i++) {
     const auto& c = cs[i];
     size_t column = static_cast<size_t>(c.iColumn);
@@ -115,23 +132,6 @@ std::pair<bool, bool> StorageTable::IsOrdered(
   const auto& ob = obs[0];
   auto col = static_cast<size_t>(ob.iColumn);
   return std::make_pair(schema_.GetColumn(col).IsNaturallyOrdered(), ob.desc);
-}
-
-std::vector<QueryConstraints::OrderBy> StorageTable::RemoveRedundantOrderBy(
-    const std::vector<QueryConstraints::Constraint>& cs,
-    const std::vector<QueryConstraints::OrderBy>& obs) {
-  std::vector<QueryConstraints::OrderBy> filtered;
-  std::set<int> equality_cols;
-  for (const auto& c : cs) {
-    if (sqlite_utils::IsOpEq(c.op))
-      equality_cols.emplace(c.iColumn);
-  }
-  for (const auto& o : obs) {
-    if (equality_cols.count(o.iColumn) > 0)
-      continue;
-    filtered.emplace_back(o);
-  }
-  return filtered;
 }
 
 std::vector<uint32_t> StorageTable::CreateSortedIndexVector(

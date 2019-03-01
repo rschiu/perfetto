@@ -32,7 +32,7 @@ class InstantsTable : public StorageTable {
   // StorageTable implementation.
   StorageSchema CreateStorageSchema() override;
   uint32_t RowCount() override;
-  int BestIndex(const QueryConstraints&, BestIndexInfo*) override;
+  int BestStorageIndex(const QueryConstraints&, BestIndexInfo*) override;
 
  private:
   std::deque<std::string> ref_types_;

@@ -44,8 +44,8 @@ uint32_t SchedSliceTable::RowCount() {
   return static_cast<uint32_t>(storage_->slices().slice_count());
 }
 
-int SchedSliceTable::BestIndex(const QueryConstraints& qc,
-                               BestIndexInfo* info) {
+int SchedSliceTable::BestStorageIndex(const QueryConstraints& qc,
+                                      BestIndexInfo* info) {
   info->estimated_cost = EstimateQueryCost(qc);
 
   // We should be able to handle any constraint and any order by clause given

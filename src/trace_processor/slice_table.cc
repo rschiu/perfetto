@@ -46,7 +46,8 @@ uint32_t SliceTable::RowCount() {
   return static_cast<uint32_t>(storage_->nestable_slices().slice_count());
 }
 
-int SliceTable::BestIndex(const QueryConstraints& qc, BestIndexInfo* info) {
+int SliceTable::BestStorageIndex(const QueryConstraints& qc,
+                                 BestIndexInfo* info) {
   info->estimated_cost =
       static_cast<uint32_t>(storage_->nestable_slices().slice_count());
 

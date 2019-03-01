@@ -44,7 +44,8 @@ uint32_t ArgsTable::RowCount() {
   return static_cast<uint32_t>(storage_->args().args_count());
 }
 
-int ArgsTable::BestIndex(const QueryConstraints& qc, BestIndexInfo* info) {
+int ArgsTable::BestStorageIndex(const QueryConstraints& qc,
+                                BestIndexInfo* info) {
   // In the case of an id equality filter, we can do a very efficient lookup.
   if (qc.constraints().size() == 1) {
     auto id = static_cast<int>(schema().ColumnIndexFromName("arg_set_id"));

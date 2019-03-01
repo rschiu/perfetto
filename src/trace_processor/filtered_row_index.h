@@ -89,6 +89,24 @@ class FilteredRowIndex {
   // error occurred.
   const std::string& error() const { return error_; }
 
+  // Returns a hint of whether there is at most a single row in the index.
+  // If true is returned, then it is guaranteed that there is zero or one rows.
+  // VERY IMPORTANT: However, if false is returned, callers SHOULD NOT rely on
+  // this being a gurantee that there are two or more rows. This method is
+  // simply a hint to allow callers to optimize algorithms (i.e. deciding
+  // whether we need to call std::sort) but callers should behave correctly even
+  // if this method returns false and subsequently has at most one row.
+  bool HasAtMostOneRowHint() {
+    switch (mode_) {
+      case Mode::kAllRows:
+        return end_row_ - start_row_ <= 1;
+      case Mode::kBitVector:
+        return std::count(row_filter_.begin(), row_filter_.end(), true);
+      case Mode::kRowVector:
+        return row_filter_.size() <= 1;
+    }
+  }
+
  private:
   enum Mode {
     kAllRows = 1,
@@ -98,8 +116,20 @@ class FilteredRowIndex {
 
   template <typename Predicate>
   void FilterAllRows(Predicate fn) {
+    auto row_count = end_row_ - start_row_;
+    if (row_count == 0) {
+      // If there are already no rows, no point creating any vector.
+      return;
+    } else if (row_count == 1) {
+      // If there is one row, see if it is still valid according to this
+      // predicate; if not then just collapse the space to zero.
+      if (!fn(start_row_))
+        end_row_ = start_row_;
+      return;
+    }
+
     mode_ = Mode::kBitVector;
-    row_filter_.resize(end_row_ - start_row_, true);
+    row_filter_.resize(row_count, true);
 
     for (uint32_t i = start_row_; i < end_row_; i++) {
       row_filter_[i - start_row_] = fn(i);

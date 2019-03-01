@@ -35,7 +35,7 @@ class CounterDefinitionsTable : public StorageTable {
   // StorageTable implementation.
   StorageSchema CreateStorageSchema() override;
   uint32_t RowCount() override;
-  int BestIndex(const QueryConstraints&, BestIndexInfo*) override;
+  int BestStorageIndex(const QueryConstraints&, BestIndexInfo*) override;
 
   class RefColumn final : public StorageColumn {
    public:

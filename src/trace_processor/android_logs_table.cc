@@ -44,8 +44,8 @@ uint32_t AndroidLogsTable::RowCount() {
   return static_cast<uint32_t>(storage_->android_logs().size());
 }
 
-int AndroidLogsTable::BestIndex(const QueryConstraints& qc,
-                                BestIndexInfo* info) {
+int AndroidLogsTable::BestStorageIndex(const QueryConstraints& qc,
+                                       BestIndexInfo* info) {
   info->estimated_cost = static_cast<uint32_t>(storage_->android_logs().size());
 
   info->order_by_consumed = true;

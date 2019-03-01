@@ -43,8 +43,8 @@ uint32_t CounterValuesTable::RowCount() {
       storage_->counter_values().counter_value_count());
 }
 
-int CounterValuesTable::BestIndex(const QueryConstraints& qc,
-                                  BestIndexInfo* info) {
+int CounterValuesTable::BestStorageIndex(const QueryConstraints& qc,
+                                         BestIndexInfo* info) {
   info->estimated_cost = EstimateCost(qc);
 
   info->order_by_consumed = true;

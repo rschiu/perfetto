@@ -131,9 +131,28 @@ class Table : public sqlite3_vtab {
   // Populated by a BestIndex call to allow subclasses to tweak SQLite's
   // handling of sets of constraints.
   struct BestIndexInfo {
-    bool order_by_consumed = false;
+    // The cost of performing the filter operation as defined by the set of
+    // constraints in the BestIndex call.
     uint32_t estimated_cost = 0;
+
+    // Whether the table implementation can perform the ordering as specified
+    // by the constraints passed in the BestIndex call.
+    // If this is false, all order by constraints will be removed before
+    // the call to Filter().
+    bool order_by_consumed = false;
+
+    // Contains whether the double-checking of the constraint at index i by
+    // SQLite should be omitted.
+    // The size of this vector is the number of filter constraints and should
+    // not be changed by table implementations.
     std::vector<bool> omit;
+
+    // Contains whether the order by constraint at index i should be removed
+    // before being passed to the Filter() method of the table implementation.
+    // This is useful to allow for implementations to remove ordering
+    // constraints they know will be trivially satisfied.
+    // The size of this vector is the number of order by constraints.
+    std::vector<bool> prune_order_by;
   };
 
   Table();

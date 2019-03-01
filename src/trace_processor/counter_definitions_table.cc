@@ -52,8 +52,8 @@ uint32_t CounterDefinitionsTable::RowCount() {
       storage_->counter_definitions().definition_count());
 }
 
-int CounterDefinitionsTable::BestIndex(const QueryConstraints& qc,
-                                       BestIndexInfo* info) {
+int CounterDefinitionsTable::BestStorageIndex(const QueryConstraints& qc,
+                                              BestIndexInfo* info) {
   info->estimated_cost = EstimateCost(qc);
 
   // Only the string columns are handled by SQLite

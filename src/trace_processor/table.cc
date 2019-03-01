@@ -210,6 +210,7 @@ int Table::BestIndexInternal(sqlite3_index_info* idx) {
 
   BestIndexInfo info;
   info.omit.resize(query_constraints.constraints().size());
+  info.prune_order_by.resize(query_constraints.order_by().size());
 
   int ret = BestIndex(query_constraints, &info);
 
@@ -233,8 +234,17 @@ int Table::BestIndexInternal(sqlite3_index_info* idx) {
       idx->aConstraintUsage[i].omit = info.omit[j++];
   }
 
-  if (!info.order_by_consumed)
-    query_constraints.ClearOrderBy();
+  // Clear the constraint vector Reinsert the constraints if the order by was
+  // consumed with the pruned constraints at each index omited.
+  query_constraints.ClearOrderBy();
+  if (info.order_by_consumed) {
+    for (size_t i = 0; i < static_cast<size_t>(idx->nOrderBy); i++) {
+      int column = idx->aOrderBy[i].iColumn;
+      bool desc = idx->aOrderBy[i].desc;
+      if (!info.prune_order_by[i])
+        query_constraints.AddOrderBy(column, desc);
+    }
+  }
 
   idx->idxStr = query_constraints.ToNewSqlite3String().release();
   idx->needToFreeIdxStr = true;

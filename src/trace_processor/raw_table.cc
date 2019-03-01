@@ -57,7 +57,8 @@ uint32_t RawTable::RowCount() {
   return static_cast<uint32_t>(storage_->raw_events().raw_event_count());
 }
 
-int RawTable::BestIndex(const QueryConstraints& qc, BestIndexInfo* info) {
+int RawTable::BestStorageIndex(const QueryConstraints& qc,
+                               BestIndexInfo* info) {
   info->estimated_cost = RowCount();
 
   // Only the string columns are handled by SQLite

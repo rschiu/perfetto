@@ -55,7 +55,8 @@ uint32_t InstantsTable::RowCount() {
   return static_cast<uint32_t>(storage_->instants().instant_count());
 }
 
-int InstantsTable::BestIndex(const QueryConstraints& qc, BestIndexInfo* info) {
+int InstantsTable::BestStorageIndex(const QueryConstraints& qc,
+                                    BestIndexInfo* info) {
   info->estimated_cost =
       static_cast<uint32_t>(storage_->instants().instant_count());
 
