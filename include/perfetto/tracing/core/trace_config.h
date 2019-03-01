@@ -79,6 +79,7 @@ class PERFETTO_EXPORT TraceConfig {
     BufferConfig& operator=(BufferConfig&&);
     BufferConfig(const BufferConfig&);
     BufferConfig& operator=(const BufferConfig&);
+    bool operator==(const BufferConfig&) const;
 
     // Conversion methods from/to the corresponding protobuf types.
     void FromProto(const perfetto::protos::TraceConfig_BufferConfig&);
@@ -107,6 +108,7 @@ class PERFETTO_EXPORT TraceConfig {
     DataSource& operator=(DataSource&&);
     DataSource(const DataSource&);
     DataSource& operator=(const DataSource&);
+    bool operator==(const DataSource&) const;
 
     // Conversion methods from/to the corresponding protobuf types.
     void FromProto(const perfetto::protos::TraceConfig_DataSource&);
@@ -149,6 +151,7 @@ class PERFETTO_EXPORT TraceConfig {
     ProducerConfig& operator=(ProducerConfig&&);
     ProducerConfig(const ProducerConfig&);
     ProducerConfig& operator=(const ProducerConfig&);
+    bool operator==(const ProducerConfig&) const;
 
     // Conversion methods from/to the corresponding protobuf types.
     void FromProto(const perfetto::protos::TraceConfig_ProducerConfig&);
@@ -181,6 +184,7 @@ class PERFETTO_EXPORT TraceConfig {
     StatsdMetadata& operator=(StatsdMetadata&&);
     StatsdMetadata(const StatsdMetadata&);
     StatsdMetadata& operator=(const StatsdMetadata&);
+    bool operator==(const StatsdMetadata&) const;
 
     // Conversion methods from/to the corresponding protobuf types.
     void FromProto(const perfetto::protos::TraceConfig_StatsdMetadata&);
@@ -227,6 +231,7 @@ class PERFETTO_EXPORT TraceConfig {
     GuardrailOverrides& operator=(GuardrailOverrides&&);
     GuardrailOverrides(const GuardrailOverrides&);
     GuardrailOverrides& operator=(const GuardrailOverrides&);
+    bool operator==(const GuardrailOverrides&) const;
 
     // Conversion methods from/to the corresponding protobuf types.
     void FromProto(const perfetto::protos::TraceConfig_GuardrailOverrides&);
@@ -253,6 +258,7 @@ class PERFETTO_EXPORT TraceConfig {
   TraceConfig& operator=(TraceConfig&&);
   TraceConfig(const TraceConfig&);
   TraceConfig& operator=(const TraceConfig&);
+  bool operator==(const TraceConfig&) const;
 
   // Conversion methods from/to the corresponding protobuf types.
   void FromProto(const perfetto::protos::TraceConfig&);

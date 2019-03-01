@@ -57,6 +57,7 @@ class PERFETTO_EXPORT CommitDataRequest {
     ChunksToMove& operator=(ChunksToMove&&);
     ChunksToMove(const ChunksToMove&);
     ChunksToMove& operator=(const ChunksToMove&);
+    bool operator==(const ChunksToMove&) const;
 
     // Conversion methods from/to the corresponding protobuf types.
     void FromProto(const perfetto::protos::CommitDataRequest_ChunksToMove&);
@@ -91,6 +92,7 @@ class PERFETTO_EXPORT CommitDataRequest {
       Patch& operator=(Patch&&);
       Patch(const Patch&);
       Patch& operator=(const Patch&);
+      bool operator==(const Patch&) const;
 
       // Conversion methods from/to the corresponding protobuf types.
       void FromProto(
@@ -122,6 +124,7 @@ class PERFETTO_EXPORT CommitDataRequest {
     ChunkToPatch& operator=(ChunkToPatch&&);
     ChunkToPatch(const ChunkToPatch&);
     ChunkToPatch& operator=(const ChunkToPatch&);
+    bool operator==(const ChunkToPatch&) const;
 
     // Conversion methods from/to the corresponding protobuf types.
     void FromProto(const perfetto::protos::CommitDataRequest_ChunkToPatch&);
@@ -164,6 +167,7 @@ class PERFETTO_EXPORT CommitDataRequest {
   CommitDataRequest& operator=(CommitDataRequest&&);
   CommitDataRequest(const CommitDataRequest&);
   CommitDataRequest& operator=(const CommitDataRequest&);
+  bool operator==(const CommitDataRequest&) const;
 
   // Conversion methods from/to the corresponding protobuf types.
   void FromProto(const perfetto::protos::CommitDataRequest&);

@@ -55,6 +55,7 @@ class PERFETTO_EXPORT TraceStats {
     BufferStats& operator=(BufferStats&&);
     BufferStats(const BufferStats&);
     BufferStats& operator=(const BufferStats&);
+    bool operator==(const BufferStats&) const;
 
     // Conversion methods from/to the corresponding protobuf types.
     void FromProto(const perfetto::protos::TraceStats_BufferStats&);
@@ -155,6 +156,7 @@ class PERFETTO_EXPORT TraceStats {
   TraceStats& operator=(TraceStats&&);
   TraceStats(const TraceStats&);
   TraceStats& operator=(const TraceStats&);
+  bool operator==(const TraceStats&) const;
 
   // Conversion methods from/to the corresponding protobuf types.
   void FromProto(const perfetto::protos::TraceStats&);

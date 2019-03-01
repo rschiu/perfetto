@@ -52,6 +52,7 @@ class PERFETTO_EXPORT FtraceConfig {
   FtraceConfig& operator=(FtraceConfig&&);
   FtraceConfig(const FtraceConfig&);
   FtraceConfig& operator=(const FtraceConfig&);
+  bool operator==(const FtraceConfig&) const;
 
   // Conversion methods from/to the corresponding protobuf types.
   void FromProto(const perfetto::protos::FtraceConfig&);

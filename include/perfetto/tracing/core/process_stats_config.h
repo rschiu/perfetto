@@ -57,6 +57,7 @@ class PERFETTO_EXPORT ProcessStatsConfig {
   ProcessStatsConfig& operator=(ProcessStatsConfig&&);
   ProcessStatsConfig(const ProcessStatsConfig&);
   ProcessStatsConfig& operator=(const ProcessStatsConfig&);
+  bool operator==(const ProcessStatsConfig&) const;
 
   // Conversion methods from/to the corresponding protobuf types.
   void FromProto(const perfetto::protos::ProcessStatsConfig&);

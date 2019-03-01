@@ -59,6 +59,7 @@ class PERFETTO_EXPORT AndroidPowerConfig {
   AndroidPowerConfig& operator=(AndroidPowerConfig&&);
   AndroidPowerConfig(const AndroidPowerConfig&);
   AndroidPowerConfig& operator=(const AndroidPowerConfig&);
+  bool operator==(const AndroidPowerConfig&) const;
 
   // Conversion methods from/to the corresponding protobuf types.
   void FromProto(const perfetto::protos::AndroidPowerConfig&);

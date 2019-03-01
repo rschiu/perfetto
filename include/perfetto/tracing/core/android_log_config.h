@@ -74,6 +74,7 @@ class PERFETTO_EXPORT AndroidLogConfig {
   AndroidLogConfig& operator=(AndroidLogConfig&&);
   AndroidLogConfig(const AndroidLogConfig&);
   AndroidLogConfig& operator=(const AndroidLogConfig&);
+  bool operator==(const AndroidLogConfig&) const;
 
   // Conversion methods from/to the corresponding protobuf types.
   void FromProto(const perfetto::protos::AndroidLogConfig&);

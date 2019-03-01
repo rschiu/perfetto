@@ -52,6 +52,7 @@ class PERFETTO_EXPORT ChromeConfig {
   ChromeConfig& operator=(ChromeConfig&&);
   ChromeConfig(const ChromeConfig&);
   ChromeConfig& operator=(const ChromeConfig&);
+  bool operator==(const ChromeConfig&) const;
 
   // Conversion methods from/to the corresponding protobuf types.
   void FromProto(const perfetto::protos::ChromeConfig&);
