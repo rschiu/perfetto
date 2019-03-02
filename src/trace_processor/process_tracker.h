@@ -90,6 +90,9 @@ class ProcessTracker {
       uint32_t pid,
       int64_t start_ns);
 
+  void AssociateThreads(UniqueTid, UniqueTid);
+  void ResolveAssociation(UniqueTid, UniquePid);
+
  private:
   TraceProcessorContext* const context_;
 
@@ -100,6 +103,12 @@ class ProcessTracker {
   // Each pid can have multiple UniquePid entries, a new UniquePid is assigned
   // each time a process is seen in the trace.
   std::multimap<uint32_t /* pid (aka tgid) */, UniquePid> pids_;
+
+  // Pending thread associations. The meaning of a pair<ThreadA, ThreadB> in
+  // this vector is: we know that A and B belong to the same process, but we
+  // don't know yet which process. A and A are idempotent, as in, pair<A,B> is
+  // equivalent to pair<B,A>.
+  std::vector<std::pair<UniqueTid, UniqueTid>> pending_assocs_;
 };
 
 }  // namespace trace_processor

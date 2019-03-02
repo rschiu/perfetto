@@ -81,6 +81,8 @@ UniqueTid ProcessTracker::UpdateThread(uint32_t tid, uint32_t pid) {
       thread = iter_thread;
       utid = iter_utid;
       break;
+    } else {
+      // TODO error here.
     }
     const auto& iter_process =
         context_->storage->GetProcess(iter_thread->upid.value());
@@ -104,6 +106,8 @@ UniqueTid ProcessTracker::UpdateThread(uint32_t tid, uint32_t pid) {
     std::tie(thread->upid, std::ignore) =
         GetOrCreateProcess(pid, thread->start_ns);
   }
+
+  ResolveAssociation(utid, *thread->upid);
 
   return utid;
 }
@@ -161,6 +165,63 @@ std::pair<UniquePid, TraceStorage::Process*> ProcessTracker::GetOrCreateProcess(
     process->start_ns = start_ns;
 
   return std::make_pair(upid, process);
+}
+
+void ProcessTracker::AssociateThreads(UniqueTid utid1, UniqueTid utid2) {
+  TraceStorage::Thread* thd1 = context_->storage->GetMutableThread(utid1);
+  TraceStorage::Thread* thd2 = context_->storage->GetMutableThread(utid2);
+
+  if (thd1->upid.has_value() && !thd2->upid.has_value()) {
+    thd2->upid = *thd1->upid;
+    ResolveAssociation(utid2, *thd1->upid);
+    return;
+  }
+
+  if (thd2->upid.has_value() && !thd1->upid.has_value()) {
+    thd1->upid = thd2->upid;
+    ResolveAssociation(utid1, *thd2->upid);
+    return;
+  }
+
+  pending_assocs_.emplace_back(utid1, utid2);
+}
+
+void ProcessTracker::ResolveAssociation(UniqueTid utid_arg, UniquePid upid) {
+  PERFETTO_DCHECK(context_->storage->GetMutableThread(utid_arg)->upid == upid);
+  std::vector<UniqueTid> resolved_utids;
+  resolved_utids.emplace_back(utid_arg);
+
+  while (!resolved_utids.empty()) {
+    UniqueTid utid = resolved_utids.back();
+    resolved_utids.pop_back();
+    for (auto it = pending_assocs_.begin(); it != pending_assocs_.end();) {
+      UniqueTid other_utid;
+      if (it->first == utid) {
+        other_utid = it->second;
+      } else if (it->second == utid) {
+        other_utid = it->first;
+      } else {
+        ++it;
+        continue;
+      }
+
+      PERFETTO_DCHECK(other_utid != utid);
+
+      // Update the other thread and associated it to the same process.
+      auto* other_thd = context_->storage->GetMutableThread(other_utid);
+      PERFETTO_DCHECK(!other_thd->upid || other_thd->upid == upid);
+      other_thd->upid = upid;
+
+      // Erase the pair. The |pending_assocs_| vector is not sorted and swapping
+      // a std::pair<uint32_t, uint32_t> is cheap.
+      std::swap(*it, pending_assocs_.back());
+      pending_assocs_.pop_back();
+
+      // Recurse into the newly resolved thread. Some other threads might have
+      // been bound to that.
+      resolved_utids.emplace_back(other_utid);
+    }
+  }  // while (!resolved_utids.empty())
 }
 
 }  // namespace trace_processor

@@ -639,13 +639,21 @@ void ProtoTraceParser::ParseProcess(TraceBlobView process) {
         ppid = fld.as_uint32();
         break;
       case protos::ProcessTree::Process::kCmdlineFieldNumber:
-        if (process_name.empty())
+        if (process_name.empty())  // cmdline is a repeated field.
           process_name = fld.as_string();
         break;
       default:
         break;
     }
   }
+
+  // Normalize process name: /system/bin/abc -> abc.
+  size_t slash = process_name.rfind('/');
+  if (!process_name.empty() && process_name.at(0) == '/' &&
+      slash < process_name.size() - 1) {
+    process_name = process_name.substr(slash + 1);
+  }
+
   context_->process_tracker->UpdateProcess(pid, ppid, process_name);
   PERFETTO_DCHECK(decoder.IsEndOfBuffer());
 }
@@ -735,8 +743,16 @@ void ProtoTraceParser::ParseFtracePacket(uint32_t cpu,
         ParseSysEvent(timestamp, pid, true, ftrace.slice(fld_off, fld.size()));
         break;
       }
-      case protos::FtraceEvent::kSysExit: {
+      case protos::FtraceEvent::kSysExitFieldNumber: {
         ParseSysEvent(timestamp, pid, false, ftrace.slice(fld_off, fld.size()));
+        break;
+      }
+      case protos::FtraceEvent::kTaskNewtaskFieldNumber: {
+        ParseTaskNewTask(timestamp, pid, ftrace.slice(fld_off, fld.size()));
+        break;
+      }
+      case protos::FtraceEvent::kTaskRenameFieldNumber: {
+        ParseTaskRename(timestamp, ftrace.slice(fld_off, fld.size()));
         break;
       }
       default:
@@ -997,6 +1013,71 @@ void ProtoTraceParser::ParseSchedSwitch(uint32_t cpu,
                                            prev_prio, prev_state, next_pid,
                                            next_comm, next_prio);
   PERFETTO_DCHECK(decoder.IsEndOfBuffer());
+}
+
+void ProtoTraceParser::ParseTaskNewTask(int64_t timestamp,
+                                        uint32_t source_tid,
+                                        TraceBlobView event) {
+  ProtoDecoder decoder(event.data(), event.length());
+  uint32_t clone_flags = 0;
+  uint32_t new_tid = 0;
+  StringId new_comm = 0;
+
+  for (auto fld = decoder.ReadField(); fld.id != 0; fld = decoder.ReadField()) {
+    switch (fld.id) {
+      case protos::TaskNewtaskFtraceEvent::kCloneFlagsFieldNumber:
+        clone_flags = fld.as_uint32();
+        break;
+      case protos::TaskNewtaskFtraceEvent::kPidFieldNumber:
+        new_tid = fld.as_uint32();
+        break;
+      case protos::TaskNewtaskFtraceEvent::kCommFieldNumber:
+        new_comm = context_->storage->InternString(fld.as_string());
+        break;
+      default:
+        break;
+    }
+  }
+
+  auto* proc_tracker = context_->process_tracker.get();
+  UniqueTid new_utid = proc_tracker->UpdateThread(timestamp, new_tid, new_comm);
+
+  // task_newtask is raised both in the case of a new process creation (fork()
+  // family) and thread creation (clone(CLONE_THREAD, ...)).
+  static const uint32_t kCloneThread = 0x00010000;  // From kernel's sched.h.
+  if ((clone_flags & kCloneThread) == 0) {
+    // In the case of a brand new process, we know that the new tid is also the
+    // main thread. We don't associate the two threads together, because they
+    // belong to two different thread groups (i.e. processes).
+    proc_tracker->UpdateThread(new_tid, /*tgid=*/new_tid);
+    return;
+  }
+
+  // This is a pthread_create or similar. Bind the two threads together, so
+  // they get resolved under the same process.
+  UniqueTid source_utid = proc_tracker->UpdateThread(timestamp, source_tid, 0);
+  proc_tracker->AssociateThreads(source_utid, new_utid);
+}
+
+void ProtoTraceParser::ParseTaskRename(int64_t timestamp, TraceBlobView event) {
+  ProtoDecoder decoder(event.data(), event.length());
+  uint32_t tid = 0;
+  StringId comm = 0;
+
+  for (auto fld = decoder.ReadField(); fld.id != 0; fld = decoder.ReadField()) {
+    switch (fld.id) {
+      case protos::TaskRenameFtraceEvent::kPidFieldNumber:
+        tid = fld.as_uint32();
+        break;
+      case protos::TaskRenameFtraceEvent::kNewcommFieldNumber:
+        comm = context_->storage->InternString(fld.as_string());
+        break;
+      default:
+        break;
+    }
+  }
+
+  context_->process_tracker->UpdateThread(timestamp, tid, comm);
 }
 
 void ProtoTraceParser::ParsePrint(uint32_t,
