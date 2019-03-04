@@ -97,6 +97,8 @@ class SpanJoinOperatorTable : public Table {
     static base::Optional<TableDescriptor> Parse(
         const std::string& raw_descriptor);
 
+    bool IsPartitioned() const { return !partition_col.empty(); }
+
     std::string name;
     std::string partition_col;
   };
@@ -109,6 +111,7 @@ class SpanJoinOperatorTable : public Table {
     TableDefinition(std::string name,
                     std::string partition_col,
                     std::vector<Table::Column> cols,
+                    bool should_emit_nulls,
                     uint32_t ts_idx,
                     uint32_t dur_idx,
                     uint32_t partition_idx);
@@ -116,6 +119,7 @@ class SpanJoinOperatorTable : public Table {
     const std::string& name() const { return name_; }
     const std::string& partition_col() const { return partition_col_; }
     const std::vector<Table::Column>& columns() const { return cols_; }
+    bool should_emit_nulls() const { return should_emit_nulls_; }
 
     uint32_t ts_idx() const { return ts_idx_; }
     uint32_t dur_idx() const { return dur_idx_; }
@@ -127,6 +131,8 @@ class SpanJoinOperatorTable : public Table {
     std::string name_;
     std::string partition_col_;
     std::vector<Table::Column> cols_;
+    bool should_emit_nulls_;
+
     uint32_t ts_idx_ = std::numeric_limits<uint32_t>::max();
     uint32_t dur_idx_ = std::numeric_limits<uint32_t>::max();
     uint32_t partition_idx_ = std::numeric_limits<uint32_t>::max();
@@ -186,6 +192,12 @@ class SpanJoinOperatorTable : public Table {
     TableQueryState t2_;
     TableQueryState* next_stepped_table_ = nullptr;
 
+    int64_t ts_ = std::numeric_limits<int64_t>::max();
+    int64_t dur_ = std::numeric_limits<int64_t>::max();
+    int64_t partition_ = std::numeric_limits<int64_t>::max();
+
+    bool t2_null_ = false;
+
     SpanJoinOperatorTable* const table_;
   };
 
@@ -207,6 +219,15 @@ class SpanJoinOperatorTable : public Table {
     int Eof() override;
   };
 
+  class LeftJoinCursor : public Cursor {
+   public:
+    LeftJoinCursor(SpanJoinOperatorTable*, sqlite3* db);
+    ~LeftJoinCursor() override = default;
+
+    int Next() override;
+    int Eof() override;
+  };
+
   // Identifier for a column by index in a given table.
   struct ColumnLocator {
     const TableDefinition* defn;
@@ -214,7 +235,8 @@ class SpanJoinOperatorTable : public Table {
   };
 
   base::Optional<TableDefinition> CreateTableDefinition(
-      const TableDescriptor& desc);
+      const TableDescriptor& desc,
+      bool should_emit_nulls);
 
   std::vector<std::string> ComputeSqlConstraintsForDefinition(
       const TableDefinition& defn,
@@ -227,6 +249,7 @@ class SpanJoinOperatorTable : public Table {
   void CreateSchemaColsForDefn(const TableDefinition& defn,
                                std::vector<Table::Column>* cols);
 
+  bool is_left_join_;
   TableDefinition t1_defn_;
   TableDefinition t2_defn_;
   PartitioningType partitioning_;

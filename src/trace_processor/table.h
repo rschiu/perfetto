@@ -172,6 +172,8 @@ class Table : public sqlite3_vtab {
 
   const Schema& schema() { return schema_; }
 
+  const std::string& name() { return name_; }
+
  private:
   template <typename TableType>
   static Factory GetFactory() {
