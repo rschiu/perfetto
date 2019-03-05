@@ -31,19 +31,21 @@ template("protozero_library") {
       component_build_force_source_set = true
     }
 
-    if (defined(invoker.deps)) {
-      deps = invoker.deps
-    } else {
-      deps = []
-    }
+    proto_deps = [ perfetto_root_path + "src/protozero" ]
 
-    deps += [ perfetto_root_path + "src/protozero" ]
+    if (defined(invoker.deps)) {
+      link_deps = invoker.deps
+    } else {
+      link_deps = []
+    }
 
     forward_variables_from(invoker,
                            [
                              "defines",
                              "generator_plugin_options",
                              "include_dirs",
+                             "link_deps",
+                             "proto_deps",
                              "proto_in_dir",
                              "proto_out_dir",
                              "sources",

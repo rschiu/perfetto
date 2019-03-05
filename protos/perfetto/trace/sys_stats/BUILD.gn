@@ -19,7 +19,7 @@ sys_stats_proto_names = [ "sys_stats.proto" ]
 
 proto_library("lite") {
   generate_python = false
-  deps = [
+  link_deps = [
     "../../common:lite",
   ]
   sources = sys_stats_proto_names

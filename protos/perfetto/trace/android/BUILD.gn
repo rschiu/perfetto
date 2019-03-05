@@ -19,7 +19,7 @@ import("../../../../gn/protozero_library.gni")
 android_proto_names = [ "android_log.proto" ]
 
 proto_library("lite") {
-  deps = [
+  link_deps = [
     "../../common:lite",
   ]
   generate_python = false

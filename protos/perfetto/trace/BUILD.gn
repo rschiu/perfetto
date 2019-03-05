@@ -52,7 +52,7 @@ protozero_library("zero") {
 # Protobuf Lite stubs, for readers.
 proto_library("lite") {
   generate_python = false
-  deps = [
+  link_deps = [
     ":minimal_lite",
     "../config:lite",
     "android:lite",
@@ -77,7 +77,7 @@ proto_library("lite") {
 # Contains the subprotos of TracePacket that all targets need.
 proto_library("minimal_lite") {
   generate_python = false
-  deps = [
+  link_deps = [
     "../config:lite",
   ]
   sources = proto_sources_minimal
@@ -88,7 +88,7 @@ proto_library("minimal_lite") {
 # Used by the traced service for packet sanitization.
 proto_library("trusted_lite") {
   generate_python = false
-  deps = [
+  link_deps = [
     ":minimal_lite",
     "../config:lite",
   ]
