@@ -73,6 +73,9 @@ class PERFETTO_EXPORT Consumer {
   // Called back by the Service (or transport layer) after invoking
   // TracingService::ConsumerEndpoint::GetTraceStats().
   virtual void OnTraceStats(bool success, const TraceStats&) = 0;
+
+
+  virtual void OnObserve() = 0;
 };
 
 }  // namespace perfetto

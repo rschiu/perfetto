@@ -88,6 +88,8 @@ service ConsumerPort {
   // such as buffer usage stats. Intended for debugging or UI use.
   rpc GetTraceStats(GetTraceStatsRequest) returns (GetTraceStatsResponse) {}
 
+  rpc Observe(ObserveRequest) returns (stream ObserveResponse) {}
+
   // TODO rpc ListDataSources(), for the UI.
 }
 
@@ -182,4 +184,54 @@ message GetTraceStatsRequest {}
 
 message GetTraceStatsResponse {
   optional TraceStats trace_stats = 1;
+}
+
+enum ObservableEvents {
+  PRODUCERS = 1,
+  REGISTERED_DATA_SOURCES = 2,
+  DATA_SOURCES_INSTANCES = 3
+}
+
+// To stop observing send a request where everything is false.
+message ObserveRequest {
+  bool observe_producers = 1;
+  bool observe_data_source_registrations = 2;
+  bool observe_data_source_instances = 3;
+}
+
+message ObserveResponse {
+
+  DataSourceInstanceState {
+    STOPPED , // (1) after creation and before start; (2) after stopping
+    STARTED,
+  }
+
+  DataSourceInstanceStateChange {
+    string data_source_name;
+    int32 producer_pid;
+    DataSourceInstanceState state
+  }
+
+  enum ProducerState {
+    DISCONNECTED,
+    CONNECTED
+  }
+
+  ProducerChange {
+    string producer_name;
+    int pid;
+    ProducerState state;
+  }
+
+  RegisteredDataSourceChange {
+    string data_source_name;
+    string producer_name
+    int pid;
+    bool registered;
+    DataSourceDescriptor ds_descriptor;
+  }
+
+  repeated ProducerChange producer_change = 1;
+  repeated RegisteredDataSourceChange = 2;
+  repeated DataSourceInstanceStateChange = 3;
 }

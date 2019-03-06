@@ -63,6 +63,11 @@ service ProducerPort {
   // from the Service.
   rpc GetAsyncCommand(GetAsyncCommandRequest)
       returns (stream GetAsyncCommandResponse) {}
+
+
+  rpc NotifyDataSourceStarted(NotifyDataSourceStartedRequest)
+      returns (NotifyDataSourceStartedResponse) {}
+
 }
 
 // Arguments for rpc InitializeConnection().
@@ -189,4 +194,5 @@ message GetAsyncCommandResponse {
     // id == 4 was teardown_tracing, never implemented.
     Flush flush = 5;
   }
+
 }
