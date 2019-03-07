@@ -20,12 +20,60 @@
 #include "perfetto/tracing/ipc/service_ipc_host.h"
 #include "src/tracing/ipc/default_socket.h"
 
+// For the LazyProducer.
+#include "perfetto/tracing/core/data_source_descriptor.h"
+#include "perfetto/tracing/core/producer.h"
+#include "perfetto/tracing/core/tracing_service.h"
+
 namespace perfetto {
+
+namespace {
+
+// This should be its own class, whatever.
+class LazyProducers : public Producer {
+ public:
+  void ConnectInProcess(TracingService* svc) {
+    endpoint_ = svc->ConnectProducer(this, geteuid(), "lazy_producer",
+                                     /*shm_hint_kb*/ 16);
+  }
+
+ private:
+  void OnConnect() override {
+    PERFETTO_ILOG("OnConnect");
+    DataSourceDescriptor dsd;
+    dsd.set_name("android.heapprofd");
+    endpoint_->RegisterDataSource(dsd);
+  }
+
+  void OnDisconnect() override {}
+  void OnTracingSetup() override {}
+  void Flush(FlushRequestID, const DataSourceInstanceID*, size_t) override {}
+
+  void SetupDataSource(DataSourceInstanceID id,
+                       const DataSourceConfig&) override {
+    PERFETTO_ILOG("Lazy setup %lld", id);
+  }
+
+  void StartDataSource(DataSourceInstanceID, const DataSourceConfig&) override {
+  }
+
+  void StopDataSource(DataSourceInstanceID id) override {
+    // Note: In the real impl give 30s or so before actually shutting down
+    // heapprofd, so it can do any sort of cleanups. Also in case of a repeated
+    // tracing sessions we don't keep respawning it.
+    PERFETTO_ILOG("Lazy stop %lld", id);
+  }
+
+  std::unique_ptr<TracingService::ProducerEndpoint> endpoint_;
+};
+
+}  // namespace
 
 int __attribute__((visibility("default"))) ServiceMain(int, char**) {
   base::UnixTaskRunner task_runner;
   std::unique_ptr<ServiceIPCHost> svc;
   svc = ServiceIPCHost::CreateInstance(&task_runner);
+  LazyProducers lazy_prod;
 
   // When built as part of the Android tree, the two socket are created and
   // bonund by init and their fd number is passed in two env variables.
@@ -58,6 +106,11 @@ int __attribute__((visibility("default"))) ServiceMain(int, char**) {
 
   PERFETTO_ILOG("Started traced, listening on %s %s", GetProducerSocket(),
                 GetConsumerSocket());
+
+  task_runner.PostTask([&svc, &lazy_prod] {
+    lazy_prod.ConnectInProcess(svc->tracing_service());
+  });
+
   task_runner.Run();
   return 0;
 }

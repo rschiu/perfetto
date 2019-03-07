@@ -50,6 +50,8 @@ class ServiceIPCHost {
   virtual bool Start(base::ScopedFile producer_socket_fd,
                      base::ScopedFile consumer_socket_fd) = 0;
 
+  virtual TracingService* tracing_service() = 0;
+
  protected:
   ServiceIPCHost();
 

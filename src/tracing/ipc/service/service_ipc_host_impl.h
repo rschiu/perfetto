@@ -42,7 +42,7 @@ class ServiceIPCHostImpl : public ServiceIPCHost {
   bool Start(base::ScopedFile producer_socket_fd,
              base::ScopedFile consumer_socket_fd) override;
 
-  TracingService* service_for_testing() const;
+  TracingService* tracing_service() override;
 
  private:
   bool DoStart();
