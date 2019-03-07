@@ -2552,7 +2552,7 @@ message Trace {
 // TracePacket(s).
 //
 // Next reserved id: 13 (up to 15).
-// Next id: 45.
+// Next id: 46.
 message TracePacket {
   // TODO(primiano): in future we should add a timestamp_clock_domain field to
   // allow mixing timestamps from different clock domains.
@@ -2576,8 +2576,9 @@ message TracePacket {
     // removed field with id 35
     ProfilePacket profile_packet = 37;
     BatteryCounters battery = 38;
-    PowerRails power_rails = 40;
     AndroidLogPacket android_log = 39;
+    PowerRails power_rails = 40;
+    // removed field with id 45
 
     // Only used by TrackEvent.
     ProcessDescriptor process_descriptor = 43;
