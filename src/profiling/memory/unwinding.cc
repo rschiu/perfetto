@@ -252,6 +252,9 @@ void UnwindingWorker::OnDataAvailable(base::UnixSocket* self) {
     return;
   }
 
+  char recv_buf[1024];
+  self->Receive(recv_buf, sizeof(recv_buf));
+
   ClientData& socket_data = it->second;
   SharedRingBuffer& shmem = socket_data.shmem;
   SharedRingBuffer::Buffer buf;
