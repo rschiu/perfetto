@@ -70,6 +70,12 @@
 #error OS not supported (see build_config.h)
 #endif
 
+#if defined(_MSC_VER)
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_COMPILER_MSVC() 1
+#else
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_COMPILER_MSVC() 0
+#endif
+
 #if defined(PERFETTO_BUILD_WITH_ANDROID)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_ANDROID_BUILD() 1
 #else
