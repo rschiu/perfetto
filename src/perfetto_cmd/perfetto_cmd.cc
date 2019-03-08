@@ -711,6 +711,11 @@ void PerfettoCmd::OnTraceStats(bool /*success*/,
   // TODO(eseckler): Support GetTraceStats().
 }
 
+void PerfettoCmd::OnObservedEvents(
+    const ObservableEvents& /*observed_events*/) {
+  // TODO(eseckler): Support ObserveEvents().
+}
+
 int __attribute__((visibility("default")))
 PerfettoCmdMain(int argc, char** argv) {
   g_consumer_cmd = new perfetto::PerfettoCmd();

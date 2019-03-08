@@ -86,6 +86,7 @@ cc_binary {
     "src/tracing/core/id_allocator.cc",
     "src/tracing/core/inode_file_config.cc",
     "src/tracing/core/null_trace_writer.cc",
+    "src/tracing/core/observable_events.cc",
     "src/tracing/core/packet_stream_validator.cc",
     "src/tracing/core/process_stats_config.cc",
     "src/tracing/core/shared_memory_abi.cc",
@@ -287,6 +288,7 @@ cc_library_shared {
     "src/tracing/core/id_allocator.cc",
     "src/tracing/core/inode_file_config.cc",
     "src/tracing/core/null_trace_writer.cc",
+    "src/tracing/core/observable_events.cc",
     "src/tracing/core/packet_stream_validator.cc",
     "src/tracing/core/process_stats_config.cc",
     "src/tracing/core/shared_memory_abi.cc",
@@ -440,6 +442,7 @@ cc_binary {
     "src/tracing/core/id_allocator.cc",
     "src/tracing/core/inode_file_config.cc",
     "src/tracing/core/null_trace_writer.cc",
+    "src/tracing/core/observable_events.cc",
     "src/tracing/core/packet_stream_validator.cc",
     "src/tracing/core/process_stats_config.cc",
     "src/tracing/core/shared_memory_abi.cc",
@@ -645,6 +648,7 @@ cc_test {
     "src/tracing/core/id_allocator.cc",
     "src/tracing/core/inode_file_config.cc",
     "src/tracing/core/null_trace_writer.cc",
+    "src/tracing/core/observable_events.cc",
     "src/tracing/core/packet_stream_validator.cc",
     "src/tracing/core/process_stats_config.cc",
     "src/tracing/core/shared_memory_abi.cc",
@@ -732,6 +736,7 @@ genrule {
   srcs: [
     "protos/perfetto/common/android_log_constants.proto",
     "protos/perfetto/common/commit_data_request.proto",
+    "protos/perfetto/common/observable_events.proto",
     "protos/perfetto/common/sys_stats_counters.proto",
     "protos/perfetto/common/trace_stats.proto",
   ],
@@ -742,6 +747,7 @@ genrule {
   out: [
     "external/perfetto/protos/perfetto/common/android_log_constants.pb.cc",
     "external/perfetto/protos/perfetto/common/commit_data_request.pb.cc",
+    "external/perfetto/protos/perfetto/common/observable_events.pb.cc",
     "external/perfetto/protos/perfetto/common/sys_stats_counters.pb.cc",
     "external/perfetto/protos/perfetto/common/trace_stats.pb.cc",
   ],
@@ -753,6 +759,7 @@ genrule {
   srcs: [
     "protos/perfetto/common/android_log_constants.proto",
     "protos/perfetto/common/commit_data_request.proto",
+    "protos/perfetto/common/observable_events.proto",
     "protos/perfetto/common/sys_stats_counters.proto",
     "protos/perfetto/common/trace_stats.proto",
   ],
@@ -763,6 +770,7 @@ genrule {
   out: [
     "external/perfetto/protos/perfetto/common/android_log_constants.pb.h",
     "external/perfetto/protos/perfetto/common/commit_data_request.pb.h",
+    "external/perfetto/protos/perfetto/common/observable_events.pb.h",
     "external/perfetto/protos/perfetto/common/sys_stats_counters.pb.h",
     "external/perfetto/protos/perfetto/common/trace_stats.pb.h",
   ],
@@ -777,6 +785,7 @@ genrule {
   srcs: [
     "protos/perfetto/common/android_log_constants.proto",
     "protos/perfetto/common/commit_data_request.proto",
+    "protos/perfetto/common/observable_events.proto",
     "protos/perfetto/common/sys_stats_counters.proto",
     "protos/perfetto/common/trace_stats.proto",
   ],
@@ -788,6 +797,7 @@ genrule {
   out: [
     "external/perfetto/protos/perfetto/common/android_log_constants.pbzero.cc",
     "external/perfetto/protos/perfetto/common/commit_data_request.pbzero.cc",
+    "external/perfetto/protos/perfetto/common/observable_events.pbzero.cc",
     "external/perfetto/protos/perfetto/common/sys_stats_counters.pbzero.cc",
     "external/perfetto/protos/perfetto/common/trace_stats.pbzero.cc",
   ],
@@ -799,6 +809,7 @@ genrule {
   srcs: [
     "protos/perfetto/common/android_log_constants.proto",
     "protos/perfetto/common/commit_data_request.proto",
+    "protos/perfetto/common/observable_events.proto",
     "protos/perfetto/common/sys_stats_counters.proto",
     "protos/perfetto/common/trace_stats.proto",
   ],
@@ -810,6 +821,7 @@ genrule {
   out: [
     "external/perfetto/protos/perfetto/common/android_log_constants.pbzero.h",
     "external/perfetto/protos/perfetto/common/commit_data_request.pbzero.h",
+    "external/perfetto/protos/perfetto/common/observable_events.pbzero.h",
     "external/perfetto/protos/perfetto/common/sys_stats_counters.pbzero.h",
     "external/perfetto/protos/perfetto/common/trace_stats.pbzero.h",
   ],
@@ -2602,6 +2614,7 @@ cc_library_static {
     "src/tracing/core/id_allocator.cc",
     "src/tracing/core/inode_file_config.cc",
     "src/tracing/core/null_trace_writer.cc",
+    "src/tracing/core/observable_events.cc",
     "src/tracing/core/packet_stream_validator.cc",
     "src/tracing/core/process_stats_config.cc",
     "src/tracing/core/shared_memory_abi.cc",
@@ -2941,6 +2954,7 @@ cc_test {
     "src/tracing/core/inode_file_config.cc",
     "src/tracing/core/null_trace_writer.cc",
     "src/tracing/core/null_trace_writer_unittest.cc",
+    "src/tracing/core/observable_events.cc",
     "src/tracing/core/packet_stream_validator.cc",
     "src/tracing/core/packet_stream_validator_unittest.cc",
     "src/tracing/core/patch_list_unittest.cc",

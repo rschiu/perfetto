@@ -123,6 +123,11 @@ class PERFETTO_EXPORT TracingService {
     // if the data source registered setting the flag
     // DataSourceDescriptor.will_notify_on_stop.
     virtual void NotifyDataSourceStopped(DataSourceInstanceID) = 0;
+
+    // Called in response to one or more Producer::StartDataSource(),
+    // if the data source registered setting the flag
+    // DataSourceDescriptor.will_notify_on_start.
+    virtual void NotifyDataSourceStarted(DataSourceInstanceID) = 0;
   };  // class ProducerEndpoint.
 
   // The API for the Consumer port of the Service.
@@ -183,6 +188,13 @@ class PERFETTO_EXPORT TracingService {
 
     // Will call OnTraceStats().
     virtual void GetTraceStats() = 0;
+
+    // Start or stop observing events of selected types. To disable observing,
+    // set all arguments to |false|. Will call OnObservedEvents() repeatedly
+    // whenever an event of an observed event type occurs.
+    //
+    // TODO(eseckler): Extend this to support producers & data sources.
+    virtual void ObserveEvents(bool observe_data_source_instances) = 0;
   };  // class ConsumerEndpoint.
 
   // Implemented in src/core/tracing_service_impl.cc .
