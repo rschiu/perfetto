@@ -17,6 +17,7 @@
 #include "src/traced/probes/ftrace/proto_translation_table.h"
 
 #include <regex.h>
+#include <sys/utsname.h>
 
 #include <algorithm>
 
@@ -50,6 +51,27 @@ ProtoTranslationTable::FtracePageHeaderSpec MakeFtracePageHeaderSpec(
     else if (name != "data")
       PERFETTO_DFATAL("Invalid field in header spec: %s", name.c_str());
   }
+  return spec;
+}
+
+// Fallback used when the "header_page" is not readable.
+// It uses a hard-coded header_page. The only caveat is that the size of the
+// |commit| field depends on the kernel bit-ness. This function tries to infer
+// that from the uname() and if that fails assumes that the kernel bitness
+// matches the userspace bitness.
+ProtoTranslationTable::FtracePageHeaderSpec GuessFtracePageHeaderSpec() {
+  ProtoTranslationTable::FtracePageHeaderSpec spec;
+  uint16_t commit_size = 8;
+
+  struct utsname sysinfo;
+  if (uname(&sysinfo) == 0) {
+    commit_size = strstr(sysinfo.machine, "64") ? 8 : 4;
+  } else {
+    commit_size = sizeof(long);
+  }
+  spec.timestamp = FtraceEvent::Field{"u64 timestamp", 0, 8, 0};
+  spec.size = FtraceEvent::Field{"local_t commit", 8, commit_size, 1};
+  spec.overwrite = FtraceEvent::Field{"int overwrite", 8, 1, 1};
   return spec;
 }
 
@@ -340,16 +362,19 @@ std::unique_ptr<ProtoTranslationTable> ProtoTranslationTable::Create(
   bool common_fields_processed = false;
   uint16_t common_fields_end = 0;
 
-  std::vector<FtraceEvent::Field> page_header_fields;
   std::string page_header = ftrace_procfs->ReadPageHeaderFormat();
-  if (page_header.empty()) {
-    PERFETTO_DFATAL("Empty page header.");
-    return nullptr;
+  bool ftrace_header_parsed = false;
+  FtracePageHeaderSpec header_spec{};
+  if (!page_header.empty()) {
+    std::vector<FtraceEvent::Field> page_header_fields;
+    ftrace_header_parsed = ParseFtraceEventBody(std::move(page_header), nullptr,
+                                                &page_header_fields);
+    header_spec = MakeFtracePageHeaderSpec(page_header_fields);
   }
-  if (!ParseFtraceEventBody(std::move(page_header), nullptr,
-                            &page_header_fields)) {
-    PERFETTO_DFATAL("Failed to parse page header.");
-    return nullptr;
+
+  if (!ftrace_header_parsed) {
+    PERFETTO_LOG("Failed to parse ftrace page header, using fallback layout");
+    header_spec = GuessFtracePageHeaderSpec();
   }
 
   for (Event& event : events) {
@@ -366,11 +391,23 @@ std::unique_ptr<ProtoTranslationTable> ProtoTranslationTable::Create(
         ftrace_procfs->ReadEventFormat(event.group, event.name);
     FtraceEvent ftrace_event;
     if (contents.empty() || !ParseFtraceEvent(contents, &ftrace_event)) {
-      continue;
+      if (!strcmp(event.group, "ftrace") && !strcmp(event.name, "print")) {
+        // On some "user" builds of Android <P the ftrace/print event is not
+        // selinux-whitelisted. Thankfully this event is an always-on built-in
+        // so we don't need to write to its 'enable' file. However we need to
+        // know its binary layout to decode it, so we hard-code it.
+        ftrace_event.id = 5;  // Seems quite stable across kernels.
+        ftrace_event.name = "print";
+        // The only field we care about is:
+        // field:char buf; offset:16; size:0; signed:0;
+        ftrace_event.fields.emplace_back(
+            FtraceEvent::Field{"char buf", 16, 0, 0});
+      } else {
+        continue;
+      }
     }
 
     event.ftrace_event_id = ftrace_event.id;
-
     if (!common_fields_processed) {
       common_fields_end =
           MergeFields(ftrace_event.common_fields, &common_fields, event.name);
@@ -390,9 +427,8 @@ std::unique_ptr<ProtoTranslationTable> ProtoTranslationTable::Create(
                               }),
                events.end());
 
-  auto table = std::unique_ptr<ProtoTranslationTable>(
-      new ProtoTranslationTable(ftrace_procfs, events, std::move(common_fields),
-                                MakeFtracePageHeaderSpec(page_header_fields)));
+  auto table = std::unique_ptr<ProtoTranslationTable>(new ProtoTranslationTable(
+      ftrace_procfs, events, std::move(common_fields), header_spec));
   return table;
 }
 
