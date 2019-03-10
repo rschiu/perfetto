@@ -27,6 +27,7 @@ TraceSorter::TraceSorter(TraceProcessorContext* context, int64_t window_size_ns)
     : context_(context), window_size_ns_(window_size_ns) {
   const char* env = getenv("TRACE_PROCESSOR_SORT_ONLY");
   bypass_next_stage_for_testing_ = env && !strcmp(env, "1");
+  PERFETTO_ELOG("bypass: %d", bypass_next_stage_for_testing_);
 }
 
 void TraceSorter::Queue::Sort() {

@@ -426,6 +426,7 @@ void PrintUsage(char** argv) {
 }
 
 int TraceProcessorMain(int argc, char** argv) {
+  getchar();
   if (argc < 2) {
     PrintUsage(argv);
     return 1;
@@ -559,6 +560,8 @@ int TraceProcessorMain(int argc, char** argv) {
     return 0;
   }
 
+  if (getpid())
+    return 0;
   // Otherwise start an interactive shell.
   return StartInteractiveShell();
 }

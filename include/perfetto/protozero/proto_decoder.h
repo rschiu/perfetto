@@ -18,181 +18,154 @@
 #define INCLUDE_PERFETTO_PROTOZERO_PROTO_DECODER_H_
 
 #include <stdint.h>
+#include <array>
 #include <memory>
+#include <vector>
 
 #include "perfetto/base/logging.h"
 #include "perfetto/base/string_view.h"
+#include "perfetto/protozero/field.h"
 #include "perfetto/protozero/proto_utils.h"
 
 namespace protozero {
 
-// Reads and decodes protobuf messages from a fixed length buffer. This class
-// does not allocate and does no more work than necessary so can be used in
-// performance sensitive contexts.
+// A generic protobuf decoder. Doesn't require any knowledge about the proto
+// schema. It tokenizes fields, retrieves their ID and type and exposes
+// accessors to retrieve its values.
+// It does NOT recurse in nested submessage, it returns their boundaries.
+// This class is designed to be used in perf-sensitive contexts. It does not
+// allocate and does not perform any proto semantic checks. It it safe w.r.t.
+// out-of-bounds memory accesses though.
 class ProtoDecoder {
  public:
-  using StringView = ::perfetto::base::StringView;
-
-  // The field of a protobuf message. |id| == 0 if the tag is not valid (e.g.
-  // because the full tag was unable to be read etc.).
-  struct Field {
-    struct LengthDelimited {
-      const uint8_t* data;
-      size_t length;
-    };
-
-    uint32_t id = 0;
-    proto_utils::ProtoWireType type;
-    union {
-      uint64_t int_value;
-      LengthDelimited length_limited;
-    };
-
-    inline bool as_bool() const {
-      PERFETTO_DCHECK(type == proto_utils::ProtoWireType::kVarInt);
-      return static_cast<bool>(int_value);
-    }
-
-    inline uint32_t as_uint32() const {
-      PERFETTO_DCHECK(type == proto_utils::ProtoWireType::kVarInt ||
-                      type == proto_utils::ProtoWireType::kFixed32);
-      return static_cast<uint32_t>(int_value);
-    }
-
-    inline int32_t as_int32() const {
-      PERFETTO_DCHECK(type == proto_utils::ProtoWireType::kVarInt ||
-                      type == proto_utils::ProtoWireType::kFixed32);
-      return static_cast<int32_t>(int_value);
-    }
-
-    inline uint64_t as_uint64() const {
-      PERFETTO_DCHECK(type == proto_utils::ProtoWireType::kVarInt ||
-                      type == proto_utils::ProtoWireType::kFixed64);
-      return int_value;
-    }
-
-    inline int64_t as_int64() const {
-      PERFETTO_DCHECK(type == proto_utils::ProtoWireType::kVarInt ||
-                      type == proto_utils::ProtoWireType::kFixed64);
-      return static_cast<int64_t>(int_value);
-    }
-
-    // A relaxed version for when we are storing any int as an int64
-    // in the raw events table.
-    inline int64_t as_integer() const {
-      PERFETTO_DCHECK(type == proto_utils::ProtoWireType::kVarInt ||
-                      type == proto_utils::ProtoWireType::kFixed64 ||
-                      type == proto_utils::ProtoWireType::kFixed32);
-      return static_cast<int64_t>(int_value);
-    }
-
-    inline float as_float() const {
-      PERFETTO_DCHECK(type == proto_utils::ProtoWireType::kFixed32);
-      float res;
-      uint32_t value32 = static_cast<uint32_t>(int_value);
-      memcpy(&res, &value32, sizeof(res));
-      return res;
-    }
-
-    inline double as_double() const {
-      PERFETTO_DCHECK(type == proto_utils::ProtoWireType::kFixed64);
-      double res;
-      memcpy(&res, &int_value, sizeof(res));
-      return res;
-    }
-
-    // A relaxed version for when we are storing floats and doubles
-    // as real in the raw events table.
-    inline double as_real() const {
-      PERFETTO_DCHECK(type == proto_utils::ProtoWireType::kFixed64 ||
-                      type == proto_utils::ProtoWireType::kFixed32);
-      double res;
-      uint64_t value64 = static_cast<uint64_t>(int_value);
-      memcpy(&res, &value64, sizeof(res));
-      return res;
-    }
-
-    inline StringView as_string() const {
-      PERFETTO_DCHECK(type == proto_utils::ProtoWireType::kLengthDelimited);
-      return StringView(reinterpret_cast<const char*>(length_limited.data),
-                        length_limited.length);
-    }
-
-    inline const uint8_t* data() const {
-      PERFETTO_DCHECK(type == proto_utils::ProtoWireType::kLengthDelimited);
-      return length_limited.data;
-    }
-
-    inline size_t size() const {
-      PERFETTO_DCHECK(type == proto_utils::ProtoWireType::kLengthDelimited);
-      return static_cast<size_t>(length_limited.length);
-    }
-  };
+  static constexpr uint32_t kMaxFieldId = 999;
 
   // Creates a ProtoDecoder using the given |buffer| with size |length| bytes.
   inline ProtoDecoder(const uint8_t* buffer, uint64_t length)
-      : buffer_(buffer), length_(length), current_position_(buffer) {}
+      : begin_(buffer), end_(buffer + length), read_ptr_(buffer) {}
 
   // Reads the next field from the buffer. If the full field cannot be read,
-  // the returned struct will have id 0 which is an invalid field id.
+  // the returned Field will be invalid (field.valid() == false).
   Field ReadField();
 
-  template <int field_id>
-  inline bool FindIntField(uint64_t* field_value) {
-    bool res = false;
-    for (auto f = ReadField(); f.id != 0; f = ReadField()) {
-      if (f.id == field_id) {
-        *field_value = f.int_value;
-        res = true;
-        break;
-      }
-    }
-    Reset();
-    return res;
-  }
-
-  template <int field_id>
-  inline bool FindStringField(StringView* field_value) {
-    bool res = false;
-    for (auto f = ReadField(); f.id != 0; f = ReadField()) {
-      if (f.id == field_id) {
-        *field_value = f.as_string();
-        res = true;
-        break;
-      }
-    }
-    Reset();
-    return res;
-  }
-
-  // Returns true if |length_| == |current_position_| - |buffer| and false
-  // otherwise.
-  inline bool IsEndOfBuffer() {
-    PERFETTO_DCHECK(current_position_ >= buffer_);
-    return length_ == static_cast<uint64_t>(current_position_ - buffer_);
-  }
+  // Finds a field with the given id. Doesn't affect the read cursor.
+  Field FindField(uint32_t field_id);
 
   // Resets the current position to the start of the buffer.
-  inline void Reset() { current_position_ = buffer_; }
+  inline void Reset() { read_ptr_ = begin_; }
 
   // Resets to the given position (must be within the buffer).
   inline void Reset(const uint8_t* pos) {
-    PERFETTO_DCHECK(pos >= buffer_ && pos < buffer_ + length_);
-    current_position_ = pos;
+    PERFETTO_DCHECK(pos >= begin_ && pos < end_);
+    read_ptr_ = pos;
   }
 
-  // Return's offset inside the buffer.
-  inline uint64_t offset() const {
-    return static_cast<uint64_t>(current_position_ - buffer_);
+  // Returns the position of read cursor, relative to the start of the buffer.
+  inline uint64_t read_offset() const {
+    return static_cast<uint64_t>(read_ptr_ - begin_);
   }
 
-  inline const uint8_t* buffer() const { return buffer_; }
-  inline uint64_t length() const { return length_; }
+  inline size_t bytes_left() const {
+    PERFETTO_DCHECK(read_ptr_ <= end_);
+    return static_cast<uint64_t>(end_ - read_ptr_);
+  }
 
- private:
-  const uint8_t* const buffer_;
-  const uint64_t length_;  // The outer buffer can be larger than 4GB.
-  const uint8_t* current_position_ = nullptr;
+ protected:
+  const uint8_t* const begin_;
+  const uint8_t* const end_;
+  const uint8_t* read_ptr_ = nullptr;
+};
+
+// Similar to the basic ProtoDecoder. The main difference is that this decoder
+// loads all fields upfront (still without recursing in nested messages).
+// It is used as a base class for typed decoders generated by the pbzero plugin.
+class ProtoDecoderBase : public ProtoDecoder {
+ public:
+  using FieldArray = std::array<Field, 1000>;
+
+  class RepeatedFieldIterator {
+   public:
+    RepeatedFieldIterator(uint32_t field_id,
+                          FieldArray::const_iterator begin,
+                          FieldArray::const_iterator end)
+        : field_id_(field_id), iter_(begin), end_(end) {
+      FindNextMatchingId();
+    }
+
+    inline const Field* operator->() const { return &*iter_; }
+    inline const Field& operator*() const { return *iter_; }
+    inline explicit operator bool() const { return iter_ != end_; }
+
+    RepeatedFieldIterator& operator++() {
+      ++iter_;
+      FindNextMatchingId();
+      return *this;
+    }
+
+   private:
+    inline void FindNextMatchingId() {
+      for (; iter_ != end_; ++iter_) {
+        if (iter_->id() == field_id_)
+          break;
+      }
+    }
+
+    uint32_t field_id_;
+    FieldArray::const_iterator iter_;
+    FieldArray::const_iterator end_;
+  };
+
+  // If the field |id| is known at compile time, prefer the templated
+  // specialization Get<kFieldNumber>().
+  inline const Field& GetSingle(uint32_t id) { return *GetFieldInternal(id); }
+
+  inline RepeatedFieldIterator GetRepeated(uint32_t field_id) const {
+    return RepeatedFieldIterator(field_id, &fields_[0], &fields_[fields_size_]);
+  }
+
+  void ParseAllFields();
+
+ protected:
+  ProtoDecoderBase(uint32_t max_field_id, const uint8_t* buffer, size_t length)
+      : ProtoDecoder(buffer, length),
+        max_field_id_(max_field_id),
+        fields_size_(max_field_id + 1) {
+    // The reason why Field needs to be trivially de/constructible is the
+    // std::array member. If Field is not trivial, then the ctor will invoke the
+    // initializer on all O(1000) entries. We need it only on the first
+    // |max_field_id|, the other uninitialized ones are gated by |fields_size_|.
+    static_assert(
+        std::is_trivially_constructible<Field>::value &&
+            std::is_trivially_destructible<Field>::value,
+        "Field must be a trivial aggregate type for performance reasons");
+    memset(&fields_[0], 0, sizeof(Field) * fields_size_);
+  }
+
+  inline Field* GetFieldInternal(uint32_t id) {
+    return id <= max_field_id_ ? &fields_[id] : &fields_[0];
+  }
+
+  uint32_t max_field_id_;
+  size_t fields_size_;
+  FieldArray fields_;
+};
+
+template <int MAX_FIELD_ID>
+class ProtoDecoder2 : public ProtoDecoderBase {
+ public:
+  ProtoDecoder2(const uint8_t* buffer, uint64_t length)
+      : ProtoDecoderBase(MAX_FIELD_ID, buffer, length) {
+    static_assert(MAX_FIELD_ID < std::tuple_size<FieldArray>::value,
+                  "The highest proto field id for this message is too high");
+    ProtoDecoderBase::ParseAllFields();
+  }
+
+  template <uint32_t FIELD_ID>
+  inline const Field& Get() const {
+    static_assert(FIELD_ID <= MAX_FIELD_ID,
+                  "Trying to read a field > MAX_FIELD_ID");
+    return fields_[FIELD_ID];
+  }
 };
 
 }  // namespace protozero
