@@ -18,27 +18,42 @@
 #include <stdint.h>
 
 #include "perfetto/base/utils.h"
+#include "perfetto/tracing/core/basic_types.h"
+#include "src/base/test/test_task_runner.h"
 #include "src/profiling/memory/queue_messages.h"
+#include "src/profiling/memory/shared_ring_buffer.h"
 #include "src/profiling/memory/unwinding.h"
 
 namespace perfetto {
 namespace profiling {
 namespace {
 
+class NopDelegate : public UnwindingWorker::Delegate {
+  void PostAllocRecord(AllocRecord) override {}
+  void PostFreeRecord(FreeRecord) override {}
+  void PostSocketDisconnected(DataSourceInstanceID, pid_t) override {}
+};
+
 int FuzzUnwinding(const uint8_t* data, size_t size) {
-  UnwindingRecord record;
-  auto unwinding_metadata = std::make_shared<UnwindingMetadata>(
-      getpid(), base::OpenFile("/proc/self/maps", O_RDONLY),
-      base::OpenFile("/proc/self/mem", O_RDONLY));
+  NopDelegate nop_delegate;
+  base::TestTaskRunner task_runner;
+  UnwindingWorker worker(&nop_delegate, &task_runner);
 
-  record.pid = getpid();
-  record.size = size;
-  record.data.reset(new uint8_t[size]);
-  memcpy(record.data.get(), data, size);
-  record.metadata = unwinding_metadata;
+  std::unique_ptr<uint8_t[]> buf_data(new uint8_t[size]);
+  memcpy(buf_data.get(), data, size);
+  SharedRingBuffer::Buffer buf(buf_data.get(), size);
 
-  BookkeepingRecord out;
-  HandleUnwindingRecord(&record, &out);
+  pid_t self_pid = getpid();
+  DataSourceInstanceID id = 0;
+  UnwindingMetadata metadata(self_pid,
+                             base::OpenFile("/proc/self/maps", O_RDONLY),
+                             base::OpenFile("/proc/self/mem", O_RDONLY));
+  // The following shouldn't be used by the unwinding codepath.
+  std::unique_ptr<base::UnixSocket> sock;
+  SharedRingBuffer shmem;
+
+  worker.HandleBufferForTesting(&buf, id, std::move(sock), std::move(metadata),
+                                std::move(shmem), self_pid);
   return 0;
 }
 

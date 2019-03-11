@@ -28,6 +28,7 @@
 #endif
 
 #include "perfetto/base/scoped_file.h"
+#include "perfetto/tracing/core/basic_types.h"
 #include "src/profiling/memory/bookkeeping.h"
 #include "src/profiling/memory/queue_messages.h"
 #include "src/profiling/memory/wire_protocol.h"
@@ -135,7 +136,7 @@ class UnwindingWorker : public base::UnixSocket::EventListener {
     virtual void PostAllocRecord(AllocRecord) = 0;
     virtual void PostFreeRecord(FreeRecord) = 0;
     virtual void PostSocketDisconnected(DataSourceInstanceID, pid_t pid) = 0;
-    virtual ~Delegate();
+    virtual ~Delegate() = default;
   };
 
   struct HandoffData {
@@ -161,6 +162,13 @@ class UnwindingWorker : public base::UnixSocket::EventListener {
   }
   void OnDataAvailable(base::UnixSocket* self) override;
 
+  void HandleBufferForTesting(SharedRingBuffer::Buffer* buf,
+                              DataSourceInstanceID data_source_instance_id,
+                              std::unique_ptr<base::UnixSocket> sock,
+                              UnwindingMetadata metadata,
+                              SharedRingBuffer shmem,
+                              pid_t peer_pid);
+
  private:
   struct ClientData {
     DataSourceInstanceID data_source_instance_id;
@@ -169,7 +177,11 @@ class UnwindingWorker : public base::UnixSocket::EventListener {
     SharedRingBuffer shmem;
   };
 
-  void HandleBuffer(SharedRingBuffer::Buffer* buf, ClientData* socket_data);
+  // peer_pid is a separate argument from socket_data for testability, and
+  // outside of tests is equivalent to socket_data->sock->peer_pid().
+  void HandleBuffer(SharedRingBuffer::Buffer* buf,
+                    ClientData* socket_data,
+                    pid_t peer_pid);
   void HandleHandoffSocket(HandoffData data);
   void HandleDisconnectSocket(pid_t pid);
 
