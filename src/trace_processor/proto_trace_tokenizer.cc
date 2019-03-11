@@ -28,6 +28,7 @@
 #include "src/trace_processor/trace_blob_view.h"
 #include "src/trace_processor/trace_sorter.h"
 #include "src/trace_processor/trace_storage.h"
+#include "src/trace_processor/trace_token.h"
 
 #include "perfetto/trace/trace.pb.h"
 #include "perfetto/trace/trace_packet.pb.h"
@@ -41,7 +42,7 @@ using protozero::proto_utils::MakeTagVarInt;
 using protozero::proto_utils::ParseVarInt;
 
 ProtoTraceTokenizer::ProtoTraceTokenizer(TraceProcessorContext* ctx)
-    : trace_sorter_(ctx->sorter.get()), trace_storage_(ctx->storage.get()) {}
+    : context_(ctx), trace_storage_(ctx->storage.get()) {}
 ProtoTraceTokenizer::~ProtoTraceTokenizer() = default;
 
 bool ProtoTraceTokenizer::Parse(std::unique_ptr<uint8_t[]> owned_buf,
@@ -134,6 +135,7 @@ void ProtoTraceTokenizer::ParseInternal(std::unique_ptr<uint8_t[]> owned_buf,
 }
 
 void ProtoTraceTokenizer::ParsePacket(TraceBlobView packet) {
+  auto* trace_sorter = context_->sorter.get();
   constexpr auto kTimestampFieldNumber =
       protos::TracePacket::kTimestampFieldNumber;
   ProtoDecoder decoder(packet.data(), packet.length());
@@ -174,12 +176,13 @@ void ProtoTraceTokenizer::ParsePacket(TraceBlobView packet) {
 
   // Use parent data and length because we want to parse this again
   // later to get the exact type of the packet.
-  trace_sorter_->PushTracePacket(timestamp, std::move(packet));
+  trace_sorter->PushTracePacket(timestamp, TraceToken(std::move(packet)));
   PERFETTO_DCHECK(decoder.IsEndOfBuffer());
 }
 
 PERFETTO_ALWAYS_INLINE
 void ProtoTraceTokenizer::ParseFtraceBundle(TraceBlobView bundle) {
+  auto* trace_sorter = context_->sorter.get();
   constexpr auto kCpuFieldNumber = protos::FtraceEventBundle::kCpuFieldNumber;
   constexpr auto kCpuFieldTag = MakeTagVarInt(kCpuFieldNumber);
   const uint8_t* data = bundle.data();
@@ -221,12 +224,13 @@ void ProtoTraceTokenizer::ParseFtraceBundle(TraceBlobView bundle) {
         break;
     }
   }
-  trace_sorter_->FinalizeFtraceEventBatch(static_cast<uint32_t>(cpu));
+  trace_sorter->FinalizeFtraceEventBatch(static_cast<uint32_t>(cpu));
   PERFETTO_DCHECK(decoder.IsEndOfBuffer());
 }
 
 PERFETTO_ALWAYS_INLINE
 void ProtoTraceTokenizer::ParseFtraceEvent(uint32_t cpu, TraceBlobView event) {
+  auto* trace_sorter = context_->sorter.get();
   constexpr auto kTimestampFieldNumber =
       protos::FtraceEvent::kTimestampFieldNumber;
   const uint8_t* data = event.data();
@@ -260,7 +264,7 @@ void ProtoTraceTokenizer::ParseFtraceEvent(uint32_t cpu, TraceBlobView event) {
 
   // We don't need to parse this packet, just push it to be sorted with
   // the timestamp.
-  trace_sorter_->PushFtraceEvent(cpu, timestamp, std::move(event));
+  trace_sorter->PushFtraceEvent(cpu, timestamp, TraceToken(std::move(event)));
 }
 
 }  // namespace trace_processor

@@ -22,6 +22,7 @@
 #include "perfetto/base/circular_queue.h"
 #include "perfetto/trace_processor/basic_types.h"
 #include "src/trace_processor/trace_blob_view.h"
+#include "src/trace_processor/trace_parser.h"
 #include "src/trace_processor/trace_processor_context.h"
 #include "src/trace_processor/trace_storage.h"
 
@@ -58,8 +59,8 @@ namespace trace_processor {
 class TraceSorter {
  public:
   struct TimestampedTracePiece {
-    TimestampedTracePiece(int64_t ts, uint64_t idx, TraceBlobView tbv)
-        : timestamp(ts), packet_idx_(idx), blob_view(std::move(tbv)) {}
+    TimestampedTracePiece(int64_t ts, uint64_t idx, TraceToken tk)
+        : timestamp(ts), packet_idx_(idx), token(std::move(tk)) {}
 
     TimestampedTracePiece(TimestampedTracePiece&&) noexcept = default;
     TimestampedTracePiece& operator=(TimestampedTracePiece&&) = default;
@@ -77,25 +78,26 @@ class TraceSorter {
 
     int64_t timestamp;
     uint64_t packet_idx_;
-    TraceBlobView blob_view;
+    TraceToken token;
   };
 
   TraceSorter(TraceProcessorContext*, int64_t window_size_ns);
+  ~TraceSorter() {}
 
-  inline void PushTracePacket(int64_t timestamp, TraceBlobView packet) {
+  inline void PushTracePacket(int64_t timestamp, TraceToken&& token) {
     DCHECK_ftrace_batch_cpu(kNoBatch);
     auto* queue = GetQueue(0);
     queue->Append(
-        TimestampedTracePiece(timestamp, packet_idx_++, std::move(packet)));
+        TimestampedTracePiece(timestamp, packet_idx_++, std::move(token)));
     MaybeExtractEvents(queue);
   }
 
   inline void PushFtraceEvent(uint32_t cpu,
                               int64_t timestamp,
-                              TraceBlobView event) {
+                              TraceToken token) {
     set_ftrace_batch_cpu_for_DCHECK(cpu);
     GetQueue(cpu + 1)->Append(
-        TimestampedTracePiece(timestamp, packet_idx_++, std::move(event)));
+        TimestampedTracePiece(timestamp, packet_idx_++, std::move(token)));
 
     // The caller must call FinalizeFtraceEventBatch() after having pushed a
     // batch of ftrace events. This is to amortize the overhead of handling
@@ -204,6 +206,7 @@ class TraceSorter {
 
 #if PERFETTO_DCHECK_IS_ON()
   // Used only for DCHECK-ing that FinalizeFtraceEventBatch() is called.
+ public:
   uint32_t ftrace_batch_cpu_ = kNoBatch;
 
   inline void DCHECK_ftrace_batch_cpu(uint32_t cpu) {

@@ -52,7 +52,7 @@ class ProtoTraceTokenizer : public ChunkedTraceReader {
   void ParseFtraceBundle(TraceBlobView);
   void ParseFtraceEvent(uint32_t cpu, TraceBlobView);
 
-  TraceSorter* const trace_sorter_;
+  TraceProcessorContext* context_;
   TraceStorage* const trace_storage_;
 
   // Used to glue together trace packets that span across two (or more)

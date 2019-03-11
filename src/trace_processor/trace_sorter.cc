@@ -32,7 +32,7 @@ TraceSorter::TraceSorter(TraceProcessorContext* context, int64_t window_size_ns)
 void TraceSorter::Queue::Sort() {
   PERFETTO_DCHECK(needs_sorting());
   PERFETTO_DCHECK(sort_start_idx_ < events_.size());
-  PERFETTO_DCHECK(sort_min_ts_ > 0 && sort_min_ts_ < max_ts_);
+  PERFETTO_DCHECK(sort_min_ts_ >= 0 && sort_min_ts_ < max_ts_);
 
   // We know that all events between [0, sort_start_idx_] are sorted. Witin
   // this range, perform a bound search and find the iterator for the min
@@ -74,7 +74,6 @@ void TraceSorter::SortAndExtractEventsBeyondWindow(int64_t window_size_ns) {
   constexpr int64_t kTsMax = std::numeric_limits<int64_t>::max();
   const bool was_empty = global_min_ts_ == kTsMax && global_max_ts_ == 0;
   int64_t extract_end_ts = global_max_ts_ - window_size_ns;
-  auto* next_stage = context_->proto_parser.get();
   size_t iterations = 0;
   for (;; iterations++) {
     size_t min_queue_idx = 0;  // The index of the queue with the min(ts).
@@ -117,6 +116,7 @@ void TraceSorter::SortAndExtractEventsBeyondWindow(int64_t window_size_ns) {
     // Now that we identified the min-queue, extract all events from it until
     // we hit either: (1) the min-ts of the 2nd queue or (2) the window limit,
     // whichever comes first.
+    TraceParser* parser = context_->parser.get();
     int64_t extract_until_ts = std::min(extract_end_ts, min_queue_ts[1]);
     size_t num_extracted = 0;
     for (auto& event : events) {
@@ -124,18 +124,18 @@ void TraceSorter::SortAndExtractEventsBeyondWindow(int64_t window_size_ns) {
       if (timestamp > extract_until_ts)
         break;
 
-      auto blob_view = std::move(event.blob_view);
+      auto token = std::move(event.token);
       ++num_extracted;
       if (bypass_next_stage_for_testing_)
         continue;
 
       if (min_queue_idx == 0) {
         // queues_[0] is for non-ftrace packets.
-        next_stage->ParseTracePacket(timestamp, std::move(blob_view));
+        parser->ParseTracePacket(timestamp, std::move(token));
       } else {
         // Ftrace queues start at offset 1. So queues_[1] = cpu[0] and so on.
         uint32_t cpu = static_cast<uint32_t>(min_queue_idx - 1);
-        next_stage->ParseFtracePacket(cpu, timestamp, std::move(blob_view));
+        parser->ParseFtracePacket(cpu, timestamp, std::move(token));
       }
     }  // for (event: events)
 

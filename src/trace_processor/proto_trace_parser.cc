@@ -263,7 +263,10 @@ ProtoTraceParser::ProtoTraceParser(TraceProcessorContext* context)
 
 ProtoTraceParser::~ProtoTraceParser() = default;
 
-void ProtoTraceParser::ParseTracePacket(int64_t ts, TraceBlobView packet) {
+void ProtoTraceParser::ParseTracePacket(int64_t ts, TraceToken token) {
+  PERFETTO_DCHECK(token.type == TraceToken::TokenType::blob_view);
+  TraceBlobView& packet = token.blob_view;
+
   ProtoDecoder decoder(packet.data(), packet.length());
 
   for (auto fld = decoder.ReadField(); fld.id != 0; fld = decoder.ReadField()) {
@@ -657,7 +660,10 @@ void ProtoTraceParser::ParseProcess(TraceBlobView process) {
 
 void ProtoTraceParser::ParseFtracePacket(uint32_t cpu,
                                          int64_t timestamp,
-                                         TraceBlobView ftrace) {
+                                         TraceToken token) {
+  PERFETTO_DCHECK(token.type == TraceToken::TokenType::blob_view);
+  TraceBlobView& ftrace = token.blob_view;
+
   ProtoDecoder decoder(ftrace.data(), ftrace.length());
   uint64_t raw_pid = 0;
   if (!PERFETTO_LIKELY(

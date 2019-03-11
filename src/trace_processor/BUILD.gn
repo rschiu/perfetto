@@ -108,6 +108,7 @@ source_set("lib") {
     "thread_table.cc",
     "thread_table.h",
     "trace_blob_view.h",
+    "trace_parser.h",
     "trace_processor.cc",
     "trace_processor_context.cc",
     "trace_processor_context.h",
@@ -117,6 +118,8 @@ source_set("lib") {
     "trace_sorter.h",
     "trace_storage.cc",
     "trace_storage.h",
+    "trace_token.cc",
+    "trace_token.h",
     "virtual_destructors.cc",
     "window_operator_table.cc",
     "window_operator_table.h",
@@ -138,6 +141,10 @@ source_set("lib") {
     sources += [
       "json_trace_parser.cc",
       "json_trace_parser.h",
+      "json_trace_tokenizer.cc",
+      "json_trace_tokenizer.h",
+      "json_trace_utils.cc",
+      "json_trace_utils.h",
     ]
     deps += [ "../../gn:jsoncpp_deps" ]
   }
