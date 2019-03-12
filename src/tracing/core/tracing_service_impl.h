@@ -28,6 +28,7 @@
 #include "perfetto/base/optional.h"
 #include "perfetto/base/time.h"
 #include "perfetto/base/weak_ptr.h"
+#include "perfetto/tracing/core/activate_triggers_request.h"
 #include "perfetto/tracing/core/basic_types.h"
 #include "perfetto/tracing/core/commit_data_request.h"
 #include "perfetto/tracing/core/data_source_descriptor.h"
@@ -207,6 +208,7 @@ class TracingServiceImpl : public TracingService {
                          const std::vector<CommitDataRequest::ChunkToPatch>&);
   void NotifyFlushDoneForProducer(ProducerID, FlushRequestID);
   void NotifyDataSourceStopped(ProducerID, const DataSourceInstanceID);
+  void ActivateTriggers(ProducerID, const ActivateTriggersRequest& triggers);
 
   // Called by ConsumerEndpointImpl.
   bool DetachConsumer(ConsumerEndpointImpl*, const std::string& key);
@@ -382,6 +384,11 @@ class TracingServiceImpl : public TracingService {
     uint64_t bytes_written_into_file = 0;
   };
 
+  struct TriggerInfo {
+    TracingSessionID session;
+    const TraceConfig::TriggerConfig::Trigger* trigger;
+  };
+
   TracingServiceImpl(const TracingServiceImpl&) = delete;
   TracingServiceImpl& operator=(const TracingServiceImpl&) = delete;
 
@@ -438,6 +445,10 @@ class TracingServiceImpl : public TracingService {
   std::set<ConsumerEndpointImpl*> consumers_;
   std::map<TracingSessionID, TracingSession> tracing_sessions_;
   std::map<BufferID, std::unique_ptr<TraceBuffer>> buffers_;
+
+  // A map of triggers to the TracingSessionIDs that care about that event.
+  // Cleaned up when the TracingSession destructs.
+  std::multimap<std::string, TriggerInfo> triggers_to_sessions_;
 
   bool smb_scraping_enabled_ = false;
   bool lockdown_mode_ = false;

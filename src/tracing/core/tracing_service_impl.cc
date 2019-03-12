@@ -104,6 +104,12 @@ uid_t geteuid() {
 }
 #endif  // PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
 
+bool IsStartTracingTrigger(const perfetto::TraceConfig& cfg) {
+  return !cfg.trigger_config().triggers().empty() &&
+         cfg.trigger_config().trigger_mode() ==
+             TraceConfig::TriggerConfig::START_TRACING;
+}
+
 }  // namespace
 
 // These constants instead are defined in the header because are used by tests.
@@ -309,6 +315,15 @@ bool TracingServiceImpl::EnableTracing(ConsumerEndpointImpl* consumer,
     return false;
   }
 
+  const bool is_start_trigger_trace = IsStartTracingTrigger(cfg);
+  if (is_start_trigger_trace && cfg.duration_ms() <= 0) {
+    PERFETTO_ELOG(
+        "Requested a trace with START_TRACE triggers, but received (%" PRIu32
+        "ms) duration which is not positive. Used for timeout of this trace.",
+        cfg.duration_ms());
+    return false;
+  }
+
   if (cfg.enable_extra_guardrails()) {
     if (cfg.deferred_start()) {
       PERFETTO_ELOG(
@@ -345,6 +360,11 @@ bool TracingServiceImpl::EnableTracing(ConsumerEndpointImpl* consumer,
   tracing_session =
       &tracing_sessions_.emplace(tsid, TracingSession(tsid, consumer, cfg))
            .first->second;
+
+  for (const auto& trigger : cfg.trigger_config().triggers()) {
+    triggers_to_sessions_.insert(
+        std::make_pair(trigger.name(), TriggerInfo{tsid, &trigger}));
+  }
 
   if (cfg.write_into_file()) {
     if (!fd) {
@@ -442,10 +462,32 @@ bool TracingServiceImpl::EnableTracing(ConsumerEndpointImpl* consumer,
       cfg.data_sources().size(), cfg.duration_ms(), cfg.buffers_size(),
       total_buf_size_kb, tracing_sessions_.size());
 
+  // For traces which use START_TRACE triggers we need to ensure that the
+  // tracing session will be cleaned up when it times out.
+  if (is_start_trigger_trace && cfg.duration_ms() > 0) {
+    auto weak_this = weak_ptr_factory_.GetWeakPtr();
+    task_runner_->PostDelayedTask(
+        [weak_this, tsid] {
+          // Skip entirely the flush if the trace session doesn't exist anymore.
+          // This is to prevent misleading error messages to be logged.
+          //
+          // In addition if the trace has started from the trigger we rely on
+          // the |finalize_trace_delay_ms| from the trigger so don't flush and
+          // disable if we've moved beyond a CONFIGURED state.
+          auto* tracing_session_lamdba = weak_this->GetTracingSession(tsid);
+          if (weak_this && tracing_session_lamdba &&
+              tracing_session_lamdba->state == TracingSession::CONFIGURED)
+            weak_this->FlushAndDisableTracing(tsid);
+        },
+        cfg.duration_ms());
+  }
+
   // Start the data sources, unless this is a case of early setup + fast
-  // triggering, using TraceConfig.deferred_start.
-  if (!cfg.deferred_start())
+  // triggering, either through TraceConfig.deferred_start or
+  // TraceConfig.trigger_config().
+  if (!cfg.deferred_start() && !is_start_trigger_trace) {
     return StartTracing(tsid);
+  }
 
   return true;
 }
@@ -726,6 +768,54 @@ void TracingServiceImpl::NotifyDataSourceStopped(
     // All data sources acked the termination.
     DisableTracingNotifyConsumerAndFlushFile(&tracing_session);
   }  // for (tracing_session)
+}
+
+void TracingServiceImpl::ActivateTriggers(
+    ProducerID producer_id,
+    const ActivateTriggersRequest& triggers) {
+  PERFETTO_DCHECK_THREAD(thread_checker_);
+  for (const auto& trigger_name : triggers.trigger_names()) {
+    auto start_and_end_iter = triggers_to_sessions_.equal_range(trigger_name);
+    for (auto iter = start_and_end_iter.first;
+         iter != start_and_end_iter.second;) {
+      auto* tracing_session = GetTracingSession(iter->second.session);
+      if (!tracing_session) {
+        // Tracing session has disappeared clean up so we don't have to iterate
+        // it in the future.
+        iter = triggers_to_sessions_.erase(iter);
+        continue;
+      }
+      auto* producer = GetProducer(producer_id);
+      if (producer) {
+        // The producer that sent us this trigger has disconnected before we got
+        // the name.
+        return;
+      }
+      auto* trigger = iter->second.trigger;
+      if (!trigger->producer_name().empty() &&
+          trigger->producer_name() != producer->name_) {
+        // This iterator doesn't match the requested producer name move on.
+        ++iter;
+        continue;
+      }
+      switch (tracing_session->config.trigger_config().trigger_mode()) {
+        case TraceConfig::TriggerConfig::START_TRACING:
+          // We override the trace duration to be the trigger's requested value.
+          //
+          // TODO(nuskos): We need to let the clean up task know that we
+          // shouldn't destroy this task now.
+          tracing_session->config.set_duration_ms(
+              trigger->finalize_trace_delay_ms());
+          StartTracing(iter->second.session);
+          break;
+        case TraceConfig::TriggerConfig::UNSPECIFIED:
+        case TraceConfig::TriggerConfig::FINALIZE_TRACE:
+          // TODO(nuskos): Add finalize in followup CL.
+          break;
+      }
+      ++iter;
+    }
+  }
 }
 
 // Always invoked kDataSourceStopTimeoutMs after DisableTracing(). In nominal
