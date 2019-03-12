@@ -67,6 +67,7 @@ class ProducerIPCClientImpl : public TracingService::ProducerEndpoint,
   void UnregisterTraceWriter(uint32_t writer_id) override;
   void CommitData(const CommitDataRequest&, CommitDataCallback) override;
   void NotifyDataSourceStopped(DataSourceInstanceID) override;
+  void ActivateTriggers(const ActivateTriggersRequest&) override;
 
   std::unique_ptr<TraceWriter> CreateTraceWriter(
       BufferID target_buffer) override;

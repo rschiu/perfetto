@@ -17,6 +17,7 @@
 #ifndef SRC_TRACING_TEST_FAKE_PRODUCER_ENDPOINT_H_
 #define SRC_TRACING_TEST_FAKE_PRODUCER_ENDPOINT_H_
 
+#include "perfetto/tracing/core/activate_triggers_request.h"
 #include "perfetto/tracing/core/commit_data_request.h"
 #include "perfetto/tracing/core/tracing_service.h"
 
@@ -33,12 +34,16 @@ class FakeProducerEndpoint : public TracingService::ProducerEndpoint {
   }
   void NotifyFlushComplete(FlushRequestID) override {}
   void NotifyDataSourceStopped(DataSourceInstanceID) override {}
+  void ActivateTriggers(const ActivateTriggersRequest& req) override {
+    last_activate_triggers_request = req;
+  }
   SharedMemory* shared_memory() const override { return nullptr; }
   size_t shared_buffer_page_size_kb() const override { return 0; }
   std::unique_ptr<TraceWriter> CreateTraceWriter(BufferID) override {
     return nullptr;
   }
 
+  ActivateTriggersRequest last_activate_triggers_request;
   CommitDataRequest last_commit_data_request;
 };
 

@@ -21,6 +21,7 @@
 
 #include "perfetto/base/task_runner.h"
 #include "perfetto/ipc/client.h"
+#include "perfetto/tracing/core/activate_triggers_request.h"
 #include "perfetto/tracing/core/commit_data_request.h"
 #include "perfetto/tracing/core/data_source_config.h"
 #include "perfetto/tracing/core/data_source_descriptor.h"
@@ -271,6 +272,19 @@ void ProducerIPCClientImpl::NotifyDataSourceStopped(DataSourceInstanceID id) {
   req.set_data_source_id(id);
   producer_port_.NotifyDataSourceStopped(
       req, ipc::Deferred<protos::NotifyDataSourceStoppedResponse>());
+}
+
+void ProducerIPCClientImpl::ActivateTriggers(
+    const ActivateTriggersRequest& req) {
+  PERFETTO_DCHECK_THREAD(thread_checker_);
+  if (!connected_) {
+    PERFETTO_DLOG("Cannot CommitData(), not connected to tracing service");
+    return;
+  }
+  protos::ActivateTriggersRequest proto_req;
+  req.ToProto(&proto_req);
+  producer_port_.ActivateTriggers(
+      proto_req, ipc::Deferred<protos::ActivateTriggersResponse>());
 }
 
 std::unique_ptr<TraceWriter> ProducerIPCClientImpl::CreateTraceWriter(

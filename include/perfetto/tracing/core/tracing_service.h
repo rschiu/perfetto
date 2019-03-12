@@ -34,6 +34,7 @@ namespace base {
 class TaskRunner;
 }  // namespace base
 
+class ActivateTriggersRequest;
 class CommitDataRequest;
 class Consumer;
 class DataSourceDescriptor;
@@ -123,6 +124,10 @@ class PERFETTO_EXPORT TracingService {
     // if the data source registered setting the flag
     // DataSourceDescriptor.will_notify_on_stop.
     virtual void NotifyDataSourceStopped(DataSourceInstanceID) = 0;
+
+    // This informs the service to activate any of these triggers if the service
+    // was waiting for them.
+    virtual void ActivateTriggers(const ActivateTriggersRequest&) = 0;
   };  // class ProducerEndpoint.
 
   // The API for the Consumer port of the Service.

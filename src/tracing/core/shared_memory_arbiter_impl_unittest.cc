@@ -19,6 +19,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "perfetto/base/utils.h"
+#include "perfetto/tracing/core/activate_triggers_request.h"
 #include "perfetto/tracing/core/basic_types.h"
 #include "perfetto/tracing/core/commit_data_request.h"
 #include "perfetto/tracing/core/shared_memory_abi.h"
@@ -49,6 +50,7 @@ class MockProducerEndpoint : public TracingService::ProducerEndpoint {
   MOCK_METHOD2(CommitData, void(const CommitDataRequest&, CommitDataCallback));
   MOCK_METHOD2(RegisterTraceWriter, void(uint32_t, uint32_t));
   MOCK_METHOD1(UnregisterTraceWriter, void(uint32_t));
+  MOCK_METHOD1(ActivateTriggers, void(const ActivateTriggersRequest&));
 };
 
 class SharedMemoryArbiterImplTest : public AlignedBufferTest {
