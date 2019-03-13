@@ -203,6 +203,11 @@ class SpanJoinOperatorTable : public Table {
       return sqlite3_column_int64(stmt_.get(), partition_idx);
     }
 
+    bool IsFullPartitionShadowSlice() const {
+      return mode_ == Mode::kShadowSlice && ts_start_ == 0 &&
+             ts_end_ == std::numeric_limits<int64_t>::max();
+    }
+
     std::string sql_query_;
     ScopedStmt stmt_;
 
