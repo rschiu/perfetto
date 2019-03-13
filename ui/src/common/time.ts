@@ -49,6 +49,7 @@ export function timeToCode(sec: number) {
       result += i.toLocaleString() + unit + ' ';
     }
   });
+  if (result === '') result = '0s ';
   return result;
 }
 

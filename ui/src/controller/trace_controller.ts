@@ -34,15 +34,16 @@ import {
   PROCESS_SCHEDULING_TRACK_KIND
 } from '../tracks/process_scheduling/common';
 import {PROCESS_SUMMARY_TRACK} from '../tracks/process_summary/common';
+import {THREAD_STATE_TRACK_KIND} from '../tracks/thread_state/common';
 
 import {Child, Children, Controller} from './controller';
 import {globals} from './globals';
 import {QueryController, QueryControllerArgs} from './query_controller';
-import {TrackControllerArgs, trackControllerRegistry} from './track_controller';
 import {
   SelectionController,
   SelectionControllerArgs
 } from './selection_controller';
+import {TrackControllerArgs, trackControllerRegistry} from './track_controller';
 
 type States = 'init'|'loading_trace'|'ready';
 
@@ -439,6 +440,18 @@ export class TraceController extends Controller<States> {
             name,
             ref,
           }
+        }));
+      }
+
+      const threadSched =
+          await engine.query(`select count(1) from sched where utid = ${utid}`);
+      if (threadSched.columns[0].longValues![0] > 0) {
+        addToTrackActions.push(Actions.addTrack({
+          engineId: this.engineId,
+          kind: THREAD_STATE_TRACK_KIND,
+          name: `${threadName} [${tid}]`,
+          trackGroup: pUuid,
+          config: {utid}
         }));
       }
 
