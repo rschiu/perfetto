@@ -243,7 +243,8 @@ void RawTable::ToSystrace(sqlite3_context* ctx,
   writer.AppendChar(':');
 
   FormatSystraceArgs(event_name, raw_evts.arg_set_ids()[row], &writer);
-  sqlite3_result_text(ctx, writer.CreateStringCopy(), -1, free);
+  const char* str = writer.CreateStringCopy();
+  sqlite3_result_blob(ctx, str, static_cast<int>(writer.pos()), free);
 }
 
 }  // namespace trace_processor
