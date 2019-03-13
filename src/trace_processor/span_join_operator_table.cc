@@ -281,7 +281,6 @@ int SpanJoinOperatorTable::Cursor::Next() {
   auto res = next_stepped_->Step();
   if (res.is_err())
     return res.err_code;
-  bool t2_shadow_slices = t2_.definition()->emit_shadow_slices();
 
   while (true) {
     if (t1_.Eof() || t2_.Eof()) {
@@ -306,9 +305,7 @@ int SpanJoinOperatorTable::Cursor::Next() {
         continue;
     }
 
-    int64_t partition = t2_shadow_slices
-                            ? t1_.partition()
-                            : std::max(t1_.partition(), t2_.partition());
+    int64_t partition = std::max(t1_.partition(), t2_.partition());
     res = t1_.StepToPartition(partition);
     if (PERFETTO_UNLIKELY(res.is_err()))
       return res.err_code;
@@ -324,8 +321,7 @@ int SpanJoinOperatorTable::Cursor::Next() {
     if (t1_.partition() != t2_.partition())
       continue;
 
-    auto ts = t2_shadow_slices ? t1_.ts_start()
-                               : std::max(t1_.ts_start(), t2_.ts_start());
+    auto ts = std::max(t1_.ts_start(), t2_.ts_start());
     res = t1_.StepUntil(ts);
     if (PERFETTO_UNLIKELY(res.is_err()))
       return res.err_code;
@@ -426,11 +422,15 @@ SpanJoinOperatorTable::Query::StepRet SpanJoinOperatorTable::Query::Step() {
         mode_ = Mode::kRealSlice;
         ts_start_ = CursorTs();
         ts_end_ = ts_start_ + CursorDur();
-      } else {
+      } else if (IsFullPartitionShadowSlice()) {
         mode_ = Mode::kShadowSlice;
         ts_start_ = 0;
         ts_end_ = CursorTs();
         partition_ = CursorPartition();
+      } else {
+        mode_ = Mode::kShadowSlice;
+        ts_start_ = 0;
+        ts_end_ = std::numeric_limits<int64_t>::max();
       }
       continue;
     }
@@ -497,17 +497,15 @@ SpanJoinOperatorTable::Query::StepToNextPartition() {
 
 SpanJoinOperatorTable::Query::StepRet
 SpanJoinOperatorTable::Query::StepToPartition(int64_t partition) {
-  PERFETTO_DCHECK(defn_->emit_shadow_slices() || partition_ <= partition);
+  PERFETTO_DCHECK(partition_ <= partition);
   if (defn_->IsPartitioned()) {
-    if (partition_ > partition) {
-      mode_ = Mode::kShadowSlice;
-      ts_start_ = 0;
-      ts_end_ = std::numeric_limits<int64_t>::max();
-      partition_ = partition;
-      return StepRet(StepRet::Code::kRow);
-    }
     while (partition_ < partition) {
-      auto res = StepToNextPartition();
+      if (IsFullPartitionShadowSlice() && partition < CursorPartition()) {
+        partition_ = partition;
+        return StepRet(StepRet::Code::kRow);
+      }
+
+      auto res = Step();
       if (!res.is_row())
         return res;
     }
@@ -564,7 +562,17 @@ int SpanJoinOperatorTable::Query::PrepareRawStmt() {
   ts_end_ = 0;
   partition_ = std::numeric_limits<int64_t>::lowest();
   cursor_eof_ = false;
-  mode_ = defn_->emit_shadow_slices() ? Mode::kShadowSlice : Mode::kRealSlice;
+  mode_ = Mode::kRealSlice;
+
+  // If we are emitting shadow slices, we need to prime the cursor and then
+  // create a full partition shadow slice for the lowest partition if the
+  // query is partitioned..
+  if (defn_->emit_shadow_slices() && defn_->IsPartitioned()) {
+    auto ret = Step();
+    PERFETTO_DCHECK(!ret.is_eof());
+    if (PERFETTO_UNLIKELY(ret.is_err()))
+      return ret.err_code;
+  }
 
   return err;
 }
