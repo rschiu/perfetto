@@ -178,6 +178,12 @@ class SpanJoinOperatorTable : public Table {
     bool IsPartitioned() const { return defn_->IsPartitioned(); }
     bool IsRealSlice() const { return mode_ == Mode::kRealSlice; }
 
+    int64_t CursorPartition() const {
+      PERFETTO_DCHECK(defn_->IsPartitioned());
+      auto partition_idx = static_cast<int>(defn_->partition_idx());
+      return sqlite3_column_int64(stmt_.get(), partition_idx);
+    }
+
    private:
     enum Mode {
       kRealSlice,
@@ -195,12 +201,6 @@ class SpanJoinOperatorTable : public Table {
     int64_t CursorDur() const {
       auto dur_idx = static_cast<int>(defn_->dur_idx());
       return sqlite3_column_int64(stmt_.get(), dur_idx);
-    }
-
-    int64_t CursorPartition() const {
-      PERFETTO_DCHECK(defn_->IsPartitioned());
-      auto partition_idx = static_cast<int>(defn_->partition_idx());
-      return sqlite3_column_int64(stmt_.get(), partition_idx);
     }
 
     bool IsFullPartitionShadowSlice() const {
@@ -237,6 +237,7 @@ class SpanJoinOperatorTable : public Table {
 
    protected:
     bool IsOverlappingSpan();
+    Query::StepRet StepUntilRealSlice();
 
     Query t1_;
     Query t2_;
@@ -252,6 +253,7 @@ class SpanJoinOperatorTable : public Table {
   };
 
   bool IsLeftJoin() const { return name() == "span_left_join"; }
+  bool IsOuterJoin() const { return name() == "span_outer_join"; }
 
   const std::string& partition_col() const {
     return t1_defn_.IsPartitioned() ? t1_defn_.partition_col()
