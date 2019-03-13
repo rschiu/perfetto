@@ -63,8 +63,9 @@ bool ExecvAtrace(const std::vector<std::string>& args) {
     // Close stdin/out + any file descriptor that we might have mistakenly
     // not marked as FD_CLOEXEC. |err_pipe| is FD_CLOEXEC and will be
     // automatically closed on exec.
+    // Closing stdin causes some subtle bug see b/128118066.
     for (int i = 0; i < 128; i++) {
-      if (i != STDERR_FILENO)
+      if (i != STDIN_FILENO && i != STDERR_FILENO)
         close(i);
     }
 
