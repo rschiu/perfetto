@@ -134,7 +134,8 @@ RowId EventTracker::PushCounter(int64_t timestamp,
                                 double value,
                                 StringId name_id,
                                 int64_t ref,
-                                RefType ref_type) {
+                                RefType ref_type,
+                                bool dedupe) {
   if (timestamp < prev_timestamp_) {
     PERFETTO_ELOG("counter event (ts: %" PRId64
                   ") out of order by %.4f ms, skipping",
@@ -145,12 +146,26 @@ RowId EventTracker::PushCounter(int64_t timestamp,
   prev_timestamp_ = timestamp;
 
   auto* definitions = context_->storage->mutable_counter_definitions();
-  auto counter_row = definitions->AddCounterDefinition(name_id, ref, ref_type);
+  auto cid = definitions->AddCounterDefinition(name_id, ref, ref_type);
 
   auto* counter_values = context_->storage->mutable_counter_values();
-  size_t idx = counter_values->AddCounterValue(counter_row, timestamp, value);
-  return TraceStorage::CreateRowId(TableId::kCounterValues,
-                                   static_cast<uint32_t>(idx));
+  if (dedupe && PERFETTO_LIKELY(cid < last_row_for_defn_.size())) {
+    auto row = last_row_for_defn_[cid];
+
+    // If the previous row existed and its value was equal to the current value,
+    // don't insert this counter - instead just return the old counter row.
+    if (PERFETTO_LIKELY(row < counter_values->size()) &&
+        std::equal_to<double>()(counter_values->values()[row], value)) {
+      return TraceStorage::CreateRowId(TableId::kCounterValues, row);
+    }
+  }
+
+  uint32_t idx = counter_values->AddCounterValue(cid, timestamp, value);
+  if (PERFETTO_UNLIKELY(last_row_for_defn_.size() <= cid))
+    last_row_for_defn_.resize(cid + 1, std::numeric_limits<uint32_t>::max());
+  last_row_for_defn_[cid] = idx;
+
+  return TraceStorage::CreateRowId(TableId::kCounterValues, idx);
 }
 
 }  // namespace trace_processor

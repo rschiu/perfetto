@@ -49,12 +49,17 @@ class EventTracker {
                                base::StringView next_comm,
                                int32_t next_prio);
 
-  // This method is called when a cpu freq event is seen in the trace.
+  // Used to push a counter to the trace storage.
+  // |dedupe| == true optionally omits pushing a counter if the value of
+  // the counter is the same as any previous value with the same name, ref
+  // and ref_type. This should only be set when any args attached to the rows
+  // would also be equal.
   virtual RowId PushCounter(int64_t timestamp,
                             double value,
                             StringId name_id,
                             int64_t ref,
-                            RefType ref_type);
+                            RefType ref_type,
+                            bool dedupe = false);
 
  private:
   // Represents a slice which is currently pending.
@@ -69,6 +74,11 @@ class EventTracker {
   // Timestamp of the previous event. Used to discard events arriving out
   // of order.
   int64_t prev_timestamp_ = 0;
+
+  // Contains the last counter value row associated to a counter defintion.
+  // The size of the deque is lazily increased to the number of counter
+  // definitions and indexed by counter definition ids.
+  std::deque<uint32_t> last_row_for_defn_;
 
   static constexpr uint8_t kSchedSwitchMaxFieldId = 7;
   std::array<StringId, kSchedSwitchMaxFieldId + 1> sched_switch_field_ids_;

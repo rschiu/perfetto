@@ -600,7 +600,7 @@ void ProtoTraceParser::ParseProcessStatsProcess(int64_t ts,
 
     UniquePid upid = context_->process_tracker->UpdateProcess(pid);
     context_->event_tracker->PushCounter(ts, value, name, upid,
-                                         RefType::kRefUpid);
+                                         RefType::kRefUpid, true /* dedupe */);
   }
 
   PERFETTO_DCHECK(decoder.IsEndOfBuffer());
