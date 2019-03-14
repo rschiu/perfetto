@@ -50,6 +50,7 @@ group("all") {
   ]
   if (perfetto_build_standalone || perfetto_build_with_android) {
     deps += [
+      ":example_ppapi",
       ":perfetto",
       ":perfetto_integrationtests",
       ":traced",
@@ -207,6 +208,17 @@ if (perfetto_build_standalone || perfetto_build_with_android) {
     ]
     sources = [
       "src/perfetto_cmd/main.cc",
+    ]
+  }
+
+  # Perfetto ppapi example
+  executable("example_ppapi") {
+    deps = [
+      "gn:default_deps",
+      "src/ppapi",
+    ]
+    sources = [
+      "test/example_ppapi_integration.cc",
     ]
   }
 
