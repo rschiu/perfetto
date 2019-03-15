@@ -103,6 +103,7 @@ source_set("daemon") {
     "../../../protos/perfetto/trace:zero",
     "../../../protos/perfetto/trace/profiling:zero",
   ]
+  defines = [ "NO_LIBDEXFILE_SUPPORT" ]
   sources = [
     "bookkeeping.cc",
     "bookkeeping.h",
