@@ -34,14 +34,14 @@ class StringView {
  public:
   static constexpr size_t npos = static_cast<size_t>(-1);
 
-  StringView() : data_(""), size_(0) {}
+  StringView() : data_(nullptr), size_(0) {}
   StringView(const StringView&) = default;
   StringView& operator=(const StringView&) = default;
   StringView(const char* data, size_t size) : data_(data), size_(size) {}
 
   // Creates a StringView from a null-terminated C string.
   // Deliberately not "explicit".
-  StringView(const char* cstr) : data_(cstr), size_(strlen(cstr)) {}
+  StringView(const char* cstr) : data_(cstr), size_(cstr ? strlen(cstr) : 0) {}
 
   // This instead has to be explicit, as creating a StringView out of a
   // std::string can be subtle.

@@ -26,6 +26,7 @@
 
 #include "perfetto/base/logging.h"
 #include "perfetto/base/optional.h"
+#include "src/trace_processor/null_term_string_view.h"
 #include "src/trace_processor/scoped_db.h"
 #include "src/trace_processor/table.h"
 
@@ -186,14 +187,14 @@ NumericPredicate<T> CreateNumericPredicate(int op, sqlite3_value* value) {
   return NumericPredicate<T>(op, extracted);
 }
 
-inline std::function<bool(const char*)> CreateStringPredicate(
+inline std::function<bool(NullTermStringView)> CreateStringPredicate(
     int op,
     sqlite3_value* value) {
   switch (op) {
     case SQLITE_INDEX_CONSTRAINT_ISNULL:
-      return [](const char* f) { return f == nullptr; };
+      return [](NullTermStringView f) { return f.data() == nullptr; };
     case SQLITE_INDEX_CONSTRAINT_ISNOTNULL:
-      return [](const char* f) { return f != nullptr; };
+      return [](NullTermStringView f) { return f.data() != nullptr; };
   }
 
   const char* val = reinterpret_cast<const char*>(sqlite3_value_text(value));
@@ -203,42 +204,50 @@ inline std::function<bool(const char*)> CreateStringPredicate(
   if (val == nullptr) {
     PERFETTO_CHECK(op != SQLITE_INDEX_CONSTRAINT_IS &&
                    op != SQLITE_INDEX_CONSTRAINT_ISNOT);
-    return [](const char*) { return false; };
+    return [](NullTermStringView) { return false; };
   }
 
   switch (op) {
     case SQLITE_INDEX_CONSTRAINT_EQ:
     case SQLITE_INDEX_CONSTRAINT_IS:
-      return [val](const char* str) {
+      return [val](NullTermStringView sv) {
+        auto* str = sv.data();
         return str != nullptr && strcmp(str, val) == 0;
       };
     case SQLITE_INDEX_CONSTRAINT_NE:
     case SQLITE_INDEX_CONSTRAINT_ISNOT:
-      return [val](const char* str) {
+      return [val](NullTermStringView sv) {
+        auto* str = sv.data();
         return str != nullptr && strcmp(str, val) != 0;
       };
     case SQLITE_INDEX_CONSTRAINT_GE:
-      return [val](const char* str) {
+      return [val](NullTermStringView sv) {
+        auto* str = sv.data();
         return str != nullptr && strcmp(str, val) >= 0;
       };
     case SQLITE_INDEX_CONSTRAINT_GT:
-      return [val](const char* str) {
+      return [val](NullTermStringView sv) {
+        auto* str = sv.data();
         return str != nullptr && strcmp(str, val) > 0;
       };
     case SQLITE_INDEX_CONSTRAINT_LE:
-      return [val](const char* str) {
+      return [val](NullTermStringView sv) {
+        auto* str = sv.data();
         return str != nullptr && strcmp(str, val) <= 0;
       };
     case SQLITE_INDEX_CONSTRAINT_LT:
-      return [val](const char* str) {
+      return [val](NullTermStringView sv) {
+        auto* str = sv.data();
         return str != nullptr && strcmp(str, val) < 0;
       };
     case SQLITE_INDEX_CONSTRAINT_LIKE:
-      return [val](const char* str) {
+      return [val](NullTermStringView sv) {
+        auto* str = sv.data();
         return str != nullptr && sqlite3_strlike(val, str, 0) == 0;
       };
     case SQLITE_INDEX_CONSTRAINT_GLOB:
-      return [val](const char* str) {
+      return [val](NullTermStringView sv) {
+        auto* str = sv.data();
         return str != nullptr && sqlite3_strglob(val, str) == 0;
       };
     default:
@@ -440,13 +449,23 @@ inline std::vector<Table::Column> GetColumnsForTable(
   return columns;
 }
 
-template <typename T>
+template <typename T, typename sqlite_utils::is_numeric<T>* = nullptr>
 int CompareValuesAsc(const T& f, const T& s) {
   return f < s ? -1 : (f > s ? 1 : 0);
 }
 
-template <typename T>
+template <typename T, typename sqlite_utils::is_numeric<T>* = nullptr>
 int CompareValuesDesc(const T& f, const T& s) {
+  return -CompareValuesAsc(f, s);
+}
+
+inline int CompareValuesAsc(const base::StringView& f,
+                            const base::StringView& s) {
+  return memcmp(f.data(), s.data(), std::min(f.size(), s.size()));
+}
+
+inline int CompareValuesDesc(const base::StringView& f,
+                             const base::StringView& s) {
   return -CompareValuesAsc(f, s);
 }
 

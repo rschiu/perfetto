@@ -32,6 +32,7 @@
 #include "perfetto/base/utils.h"
 #include "src/trace_processor/ftrace_utils.h"
 #include "src/trace_processor/stats.h"
+#include "src/trace_processor/string_pool.h"
 
 namespace perfetto {
 namespace trace_processor {
@@ -83,9 +84,11 @@ enum RefType {
 class TraceStorage {
  public:
   TraceStorage();
-  TraceStorage(const TraceStorage&) = delete;
-
   virtual ~TraceStorage();
+
+  // Allow std::move().
+  TraceStorage(TraceStorage&&) noexcept = default;
+  TraceStorage& operator=(TraceStorage&&) = default;
 
   // Information about a unique process seen in a trace.
   struct Process {
@@ -591,9 +594,8 @@ class TraceStorage {
   }
 
   // Reading methods.
-  const std::string& GetString(StringId id) const {
-    PERFETTO_DCHECK(id < string_pool_.size());
-    return string_pool_[id];
+  NullTermStringView GetString(StringId id) const {
+    return string_pool_.Get(id);
   }
 
   const Process& GetProcess(UniquePid upid) const {
@@ -651,7 +653,7 @@ class TraceStorage {
   const RawEvents& raw_events() const { return raw_events_; }
   RawEvents* mutable_raw_events() { return &raw_events_; }
 
-  const std::vector<std::string>& string_pool() const { return string_pool_; }
+  const StringPool& string_pool() const { return string_pool_; }
 
   // |unique_processes_| always contains at least 1 element becuase the 0th ID
   // is reserved to indicate an invalid process.
@@ -673,7 +675,9 @@ class TraceStorage {
 
   using StringHash = uint64_t;
 
-  TraceStorage& operator=(const TraceStorage&) = default;
+  // Disable implicit copy.
+  TraceStorage(const TraceStorage&) = delete;
+  TraceStorage& operator=(const TraceStorage&) = delete;
 
   // Stats about parsing the trace.
   StatsMap stats_{};
@@ -685,7 +689,7 @@ class TraceStorage {
   Args args_;
 
   // One entry for each unique string in the trace.
-  std::vector<std::string> string_pool_;
+  StringPool string_pool_;
 
   // One entry for each unique string in the trace.
   std::unordered_map<StringHash, StringId> string_index_;

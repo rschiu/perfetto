@@ -25,6 +25,7 @@
 #include "src/trace_processor/filtered_row_index.h"
 #include "src/trace_processor/sqlite_utils.h"
 #include "src/trace_processor/storage_columns.h"
+#include "src/trace_processor/string_pool.h"
 #include "src/trace_processor/table.h"
 #include "src/trace_processor/trace_storage.h"
 
@@ -70,6 +71,14 @@ class StorageSchema {
                              const std::deque<Id>* ids,
                              const std::vector<std::string>* string_map) {
       columns_.emplace_back(new StringColumn<Id>(column_name, ids, string_map));
+      return *this;
+    }
+
+    template <class Id>
+    Builder& AddStringColumn(std::string column_name,
+                             const std::deque<Id>* ids,
+                             const StringPool* pool) {
+      columns_.emplace_back(new StringColumn2<Id>(column_name, ids, pool));
       return *this;
     }
 

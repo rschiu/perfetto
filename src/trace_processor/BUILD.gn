@@ -103,6 +103,8 @@ source_set("lib") {
     "storage_schema.h",
     "storage_table.cc",
     "storage_table.h",
+    "string_pool.cc",
+    "string_pool.h",
     "string_table.cc",
     "string_table.h",
     "table.cc",
