@@ -197,6 +197,33 @@ source_set("malloc_hooks") {
     "-isystem",
     rebase_path("../../../buildtools/bionic/libc", root_build_dir),
   ]
+  if (perfetto_build_with_android) {
+    cflags += [ "-DPERFETTO_ANDROID_ASYNC_SAFE_LOG" ]
+  }
+  sources = [
+    "malloc_hooks.cc",
+  ]
+}
+
+# This will export publicly visibile symbols for the malloc_hooks.
+source_set("malloc_hooks_backport") {
+  deps = [
+    ":client",
+    ":proc_utils",
+    ":scoped_spinlock",
+    ":wire_protocol",
+    "../../../gn:default_deps",
+    "../../base",
+    "../../base:unix_socket",
+  ]
+  cflags = [
+    "-isystem",
+    rebase_path("../../../buildtools/bionic/libc", root_build_dir),
+  ]
+  defines = [ "HEAPPROFD_PREFIX=malloc_debug" ]
+  if (perfetto_build_with_android) {
+    cflags += [ "-DPERFETTO_ANDROID_ASYNC_SAFE_LOG" ]
+  }
   sources = [
     "malloc_hooks.cc",
   ]

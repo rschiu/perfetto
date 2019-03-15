@@ -182,7 +182,7 @@ BUILD_DEPS_HOST = [
 
   ('buildtools/bionic',
    'https://android.googlesource.com/platform/bionic.git',
-   'a60488109cda997dfd83832731c8527feaa2825e',
+   '9d69d4ccaee992c2c64b67ee8b23775fa24c9ba6',
    'all'
   ),
 

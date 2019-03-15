@@ -298,15 +298,19 @@ if (perfetto_build_standalone) {
 #
 # This is deemed acceptable as, at the time of writing, there is no interest in
 # building this library standalone.
-if (perfetto_build_with_android) {
-  # TODO(fmayer): Investigate shared library for common pieces.
-  shared_library("heapprofd_client") {
-    configs -= [ "//gn/standalone:android_liblog" ]
-    cflags = [ "-DPERFETTO_ANDROID_ASYNC_SAFE_LOG" ]
-    deps = [
-      "src/profiling/memory:malloc_hooks",
-    ]
-  }
+# TODO(fmayer): Investigate shared library for common pieces.
+shared_library("heapprofd_client") {
+  configs -= [ "//gn/standalone:android_liblog" ]
+  deps = [
+    "src/profiling/memory:malloc_hooks",
+  ]
+}
+
+shared_library("heapprofd_client_backport") {
+  configs -= [ "//gn/standalone:android_liblog" ]
+  deps = [
+    "src/profiling/memory:malloc_hooks_backport",
+  ]
 }
 
 if (should_build_heapprofd) {

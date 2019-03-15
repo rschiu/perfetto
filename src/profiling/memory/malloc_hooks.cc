@@ -53,6 +53,26 @@ using perfetto::profiling::ScopedSpinlock;
 #pragma GCC visibility push(default)
 extern "C" {
 
+#if !PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)
+// TODO(fmayer): Figure out how to build this without disabling logging.
+extern int __android_log_buf_print(int bufID,
+                                   int prio,
+                                   const char* tag,
+                                   const char* fmt,
+                                   ...);
+
+int __android_log_buf_print(int, int, const char*, const char*, ...) {
+  return 0;
+}
+
+extern "C" bool android_mallopt(int opcode, void* arg, size_t arg_size);
+
+bool android_mallopt(int, void*, size_t) {
+  return false;
+}
+
+#endif
+
 bool HEAPPROFD_ADD_PREFIX(_initialize)(const MallocDispatch* malloc_dispatch,
                                        int* malloc_zygote_child,
                                        const char* options);
@@ -114,7 +134,13 @@ std::atomic<const MallocDispatch*> g_dispatch{nullptr};
 // This shared_ptr itself is protected by g_client_lock. Note that shared_ptr
 // handles are not thread-safe by themselves:
 // https://en.cppreference.com/w/cpp/memory/shared_ptr/atomic
+#pragma GCC diagnostic push
+// The constructor initializes with nullptr, so none ofo the ordering problems
+// with global constructors apply.
+#pragma GCC diagnostic ignored "-Wglobal-constructors"
+#pragma GCC diagnostic ignored "-Wexit-time-destructors"
 std::shared_ptr<perfetto::profiling::Client> g_client;
+#pragma GCC diagnostic pop
 
 // Protects g_client, and serves as an external lock for sampling decisions (see
 // perfetto::profiling::Sampler).
@@ -152,9 +178,8 @@ std::string ReadSystemProperty(const char* key) {
   }
   __system_property_read_callback(
       prop,
-      [](void* cookie, const char* name, const char* value, uint32_t) {
-        std::string* prop_value = reinterpret_cast<std::string*>(cookie);
-        *prop_value = value;
+      [](void* cookie, const char*, const char* value, uint32_t) {
+        *reinterpret_cast<std::string*>(cookie) = value;
       },
       &prop_value);
   return prop_value;
@@ -250,7 +275,8 @@ std::shared_ptr<perfetto::profiling::Client> CreateClientAndPrivateDaemon() {
   // Wait on the immediate child to exit (allow for ECHILD in the unlikely case
   // we're in a process that has made its children unwaitable).
   siginfo_t unused = {};
-  if (PERFETTO_EINTR(waitid(P_PID, fork_pid, &unused, WEXITED)) == -1 &&
+  if (PERFETTO_EINTR(
+          waitid(P_PID, static_cast<id_t>(fork_pid), &unused, WEXITED)) == -1 &&
       errno != ECHILD) {
     PERFETTO_PLOG("Failed to waitid on immediate child.");
     return nullptr;
