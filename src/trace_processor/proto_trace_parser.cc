@@ -16,6 +16,7 @@
 
 #include "src/trace_processor/proto_trace_parser.h"
 
+#include <inttypes.h>
 #include <string.h>
 
 #include <string>
@@ -1384,6 +1385,12 @@ void ProtoTraceParser::ParseTypedFtraceToRaw(uint32_t ftrace_id,
   RowId raw_event_id = context_->storage->mutable_raw_events()->AddRawEvent(
       timestamp, message_strings.message_name_id, cpu, utid);
   for (auto fld = decoder.ReadField(); fld.id != 0; fld = decoder.ReadField()) {
+    if (fld.id >= kFtraceMaxFieldCount) {
+      PERFETTO_ELOG("Skipping ftrace event proto's field id (%" PRIu32
+                    "), as it is too large.",
+                    fld.id);
+      continue;
+    }
     ProtoSchemaType type = m->fields[fld.id].type;
     StringId name_id = message_strings.field_name_ids[fld.id];
     switch (type) {
