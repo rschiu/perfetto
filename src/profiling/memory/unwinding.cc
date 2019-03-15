@@ -223,7 +223,6 @@ bool DoUnwind(WireMessage* msg, UnwindingMetadata* metadata, AllocRecord* out) {
   }
 
   if (error_code != 0) {
-    PERFETTO_DLOG("Unwinding error %d", error_code);
     unwindstack::FrameData frame_data{};
     frame_data.function_name = "ERROR " + std::to_string(error_code);
     frame_data.map_name = "ERROR";
