@@ -72,6 +72,7 @@ class TraceBlobView {
 
   // const std::shared_ptr<uint8_t[]>& buffer() const { return shbuf_; }
   size_t length() const { return length_; }
+  size_t offset() const { return offset_; }
 
  private:
   // An equivalent to std::shared_ptr<uint8_t>, with the differnce that:

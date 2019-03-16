@@ -26,6 +26,8 @@
 #include "google/protobuf/io/zero_copy_stream.h"
 #include "google/protobuf/stubs/strutil.h"
 
+#include "perfetto/protozero/proto_decoder.h"
+
 namespace protozero {
 
 using google::protobuf::Descriptor;  // Message descriptor.
@@ -274,6 +276,7 @@ class GeneratorJob {
         "#include <stddef.h>\n"
         "#include <stdint.h>\n\n"
         "#include \"perfetto/base/export.h\"\n"
+        "#include \"perfetto/protozero/proto_decoder.h\"\n"
         "#include \"perfetto/protozero/proto_field_descriptor.h\"\n"
         "#include \"perfetto/protozero/message.h\"\n",
         "greeting", greeting, "guard", guard);
@@ -459,6 +462,111 @@ class GeneratorJob {
         action, "inner_class", inner_class);
   }
 
+  void GenerateParser(const Descriptor* message) {
+    int max_field_id = 0;
+    bool has_repeated_fields = false;
+    for (int i = 0; i < message->field_count(); ++i) {
+      const FieldDescriptor* field = message->field(i);
+      if (field->number() > static_cast<int>(kMaxDecoderFieldId))
+        continue;
+      max_field_id = std::max(max_field_id, field->number());
+      if (field->is_repeated())
+        has_repeated_fields = true;
+    }
+
+    stub_h_->Print(
+        "class Parser : public "
+        "::protozero::TypedProtoDecoderTemplate</*MAX_FIELD_ID=*/$max$, "
+        "/*HAS_REPEATED_FIELDS=*/$rep$> {\n",
+        "max", std::to_string(max_field_id), "rep",
+        has_repeated_fields ? "true" : "false");
+    stub_h_->Print(" public:\n");
+    stub_h_->Indent();
+    stub_h_->Print(
+        "Parser(const uint8_t* data, size_t len) "
+        ": TypedProtoDecoderTemplate(data, len) {}\n");
+
+    for (int i = 0; i < message->field_count(); ++i) {
+      const FieldDescriptor* field = message->field(i);
+      if (field->number() > max_field_id) {
+        stub_h_->Print("// field $name$ omitted because its id is too high",
+                       "name", field->name());
+        continue;
+      }
+      std::string getter;
+      std::string cpp_type;
+      switch (field->type()) {
+        case FieldDescriptor::TYPE_BOOL:
+          getter = "as_bool";
+          cpp_type = "bool";
+          break;
+        case FieldDescriptor::TYPE_SFIXED32:
+        case FieldDescriptor::TYPE_SINT32:
+        case FieldDescriptor::TYPE_INT32:
+          getter = "as_int32";
+          cpp_type = "int32_t";
+          break;
+        case FieldDescriptor::TYPE_SFIXED64:
+        case FieldDescriptor::TYPE_SINT64:
+        case FieldDescriptor::TYPE_INT64:
+          getter = "as_int64";
+          cpp_type = "int64_t";
+          break;
+        case FieldDescriptor::TYPE_FIXED32:
+        case FieldDescriptor::TYPE_UINT32:
+          getter = "as_uint32";
+          cpp_type = "uint32_t";
+          break;
+        case FieldDescriptor::TYPE_FIXED64:
+        case FieldDescriptor::TYPE_UINT64:
+          getter = "as_uint64";
+          cpp_type = "uint64_t";
+          break;
+        case FieldDescriptor::TYPE_FLOAT:
+          getter = "as_float";
+          cpp_type = "float";
+          break;
+        case FieldDescriptor::TYPE_DOUBLE:
+          getter = "as_double";
+          cpp_type = "double";
+          break;
+        case FieldDescriptor::TYPE_ENUM:
+          getter = "as_int32";
+          cpp_type = "int32_t";
+          break;
+        case FieldDescriptor::TYPE_STRING:
+          getter = "as_string";
+          cpp_type = "::protozero::Field::StringView";
+          break;
+        case FieldDescriptor::TYPE_MESSAGE:
+        case FieldDescriptor::TYPE_BYTES:
+          getter = "as_bytes";
+          cpp_type = "::protozero::ContiguousMemoryRange";
+          break;
+        case FieldDescriptor::TYPE_GROUP:
+          continue;
+      }
+
+      stub_h_->Print(
+          "bool has_$name$() const { return Get<$id$>().valid(); }\n", "name",
+          field->name(), "id", std::to_string(field->number()));
+
+      if (field->is_repeated()) {
+        stub_h_->Print(
+            "::protozero::RepeatedFieldIterator $name$() const { return "
+            "GetRepeated($id$); }\n",
+            "name", field->name(), "id", std::to_string(field->number()));
+      } else {
+        stub_h_->Print(
+            "$cpp_type$ $name$() const { return Get<$id$>().$getter$(); }\n",
+            "name", field->name(), "id", std::to_string(field->number()),
+            "cpp_type", cpp_type, "getter", getter);
+      }
+    }
+    stub_h_->Outdent();
+    stub_h_->Print("};\n");
+  }
+
   void GenerateReflectionForMessageFields(const Descriptor* message) {
     const bool has_fields = (message->field_count() > 0);
 
@@ -527,6 +635,7 @@ class GeneratorJob {
     stub_h_->Indent();
 
     GenerateReflectionForMessageFields(message);
+    GenerateParser(message);
 
     // Using statements for nested messages.
     for (int i = 0; i < message->nested_type_count(); ++i) {
