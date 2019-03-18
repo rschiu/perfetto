@@ -160,9 +160,13 @@ config("public_config") {
 # Chromium.
 group("jsoncpp_deps") {
   if (perfetto_build_standalone) {
-    public_configs = [ "//buildtools:jsoncpp_config" ]
+    public_configs = [
+      "//buildtools:jsoncpp_config",
+      "//buildtools:sajson_config",
+    ]
     public_deps = [
       "//buildtools:jsoncpp",
+      "//buildtools:sajson",
     ]
   }
 }

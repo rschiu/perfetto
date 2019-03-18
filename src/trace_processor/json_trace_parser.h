@@ -26,8 +26,8 @@
 #include "src/trace_processor/chunked_trace_reader.h"
 #include "src/trace_processor/trace_storage.h"
 
-namespace Json {
-class Value;
+namespace sajson {
+class value;
 }
 
 namespace perfetto {
@@ -35,9 +35,9 @@ namespace trace_processor {
 
 class TraceProcessorContext;
 
-base::Optional<int64_t> CoerceToNs(const Json::Value& value);
-base::Optional<int64_t> CoerceToInt64(const Json::Value& value);
-base::Optional<uint32_t> CoerceToUint32(const Json::Value& value);
+base::Optional<int64_t> CoerceToNs(const sajson::value& value);
+base::Optional<int64_t> CoerceToInt64(const sajson::value& value);
+base::Optional<uint32_t> CoerceToUint32(const sajson::value& value);
 
 // Parses legacy chrome JSON traces. The support for now is extremely rough
 // and supports only explicit TRACE_EVENT_BEGIN/END events.

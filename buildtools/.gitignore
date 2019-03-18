@@ -23,6 +23,7 @@ mac/
 ndk/
 nodejs/
 protobuf/
+sajson/
 sqlite/
 sqlite_src/
 test_data/

@@ -757,6 +757,23 @@ source_set("jsoncpp") {
   public_configs = [ ":jsoncpp_config" ]
 }
 
+config("sajson_config") {
+  cflags = [
+    # Using -isystem instead of include_dirs (-I), so we don't need to suppress
+    # warnings coming from third-party headers. Doing so would mask warnings in
+    # our own code.
+    "-isystem",
+    rebase_path("sajson/include", root_build_dir),
+  ]
+}
+
+source_set("sajson") {
+  sources = [
+    "sajson/include/sajson.h",
+  ]
+  public_configs = [ ":sajson_config" ]
+}
+
 config("linenoise_config") {
   cflags = [
     # Using -isystem instead of include_dirs (-I), so we don't need to suppress

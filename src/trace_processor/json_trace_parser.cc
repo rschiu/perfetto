@@ -19,6 +19,7 @@
 #include <inttypes.h>
 #include <json/reader.h>
 #include <json/value.h>
+#include <sajson.h>
 
 #include <limits>
 #include <string>
@@ -38,7 +39,7 @@ namespace perfetto {
 namespace trace_processor {
 namespace {
 
-enum ReadDictRes { kFoundDict, kNeedsMoreData, kEndOfTrace, kFatalError };
+enum ReadDictRes { kFoundDict, kNeedsMoreData, kEndOfTrace };
 
 // Parses at most one JSON dictionary and returns a pointer to the end of it,
 // or nullptr if no dict could be detected.
@@ -47,7 +48,7 @@ enum ReadDictRes { kFoundDict, kNeedsMoreData, kEndOfTrace, kFatalError };
 //       output: [   only this is parsed    ] ^return value points here.
 ReadDictRes ReadOneJsonDict(const char* start,
                             const char* end,
-                            Json::Value* value,
+                            const char** begin,
                             const char** next) {
   int braces = 0;
   const char* dict_begin = nullptr;
@@ -65,12 +66,16 @@ ReadDictRes ReadOneJsonDict(const char* start,
         return kEndOfTrace;
       if (--braces > 0)
         continue;
-      Json::Reader reader;
-      if (!reader.parse(dict_begin, s + 1, *value, /*collectComments=*/false)) {
-        PERFETTO_ELOG("JSON error: %s",
-                      reader.getFormattedErrorMessages().c_str());
-        return kFatalError;
-      }
+
+      *begin = dict_begin;
+
+      // Json::Reader reader;
+      // if (!reader.parse(dict_begin, s + 1, *value,
+      // /*collectComments=*/false)) {
+      //  PERFETTO_ELOG("JSON error: %s",
+      //                reader.getFormattedErrorMessages().c_str());
+      //  return kFatalError;
+      //}
       *next = s + 1;
       return kFoundDict;
     }
@@ -83,18 +88,20 @@ ReadDictRes ReadOneJsonDict(const char* start,
 
 // Json trace event timestamps are in us.
 // https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/edit#heading=h.nso4gcezn7n1
-base::Optional<int64_t> CoerceToNs(const Json::Value& value) {
-  switch (static_cast<size_t>(value.type())) {
-    case Json::realValue:
-      return static_cast<int64_t>(value.asDouble() * 1000);
-    case Json::uintValue:
-    case Json::intValue:
-      return value.asInt64() * 1000;
-    case Json::stringValue: {
-      std::string s = value.asString();
+base::Optional<int64_t> CoerceToNs(const sajson::value& value) {
+  switch (static_cast<size_t>(value.get_type())) {
+    case sajson::TYPE_DOUBLE:
+      return static_cast<int64_t>(value.get_double_value() * 1000);
+    case sajson::TYPE_INTEGER: {
+      int64_t result;
+      if (value.get_int53_value(&result))
+        return result * 1000;
+      return base::nullopt;
+    }
+    case sajson::TYPE_STRING: {
       char* end;
-      int64_t n = strtoll(s.c_str(), &end, 10);
-      if (end != s.data() + s.size())
+      int64_t n = strtoll(value.as_cstring(), &end, 10);
+      if (end != value.as_cstring() + value.get_string_length())
         return base::nullopt;
       return n * 1000;
     }
@@ -103,17 +110,17 @@ base::Optional<int64_t> CoerceToNs(const Json::Value& value) {
   }
 }
 
-base::Optional<int64_t> CoerceToInt64(const Json::Value& value) {
-  switch (static_cast<size_t>(value.type())) {
-    case Json::realValue:
-    case Json::uintValue:
-    case Json::intValue:
-      return value.asInt64();
-    case Json::stringValue: {
-      std::string s = value.asString();
+base::Optional<int64_t> CoerceToInt64(const sajson::value& value) {
+  switch (static_cast<size_t>(value.get_type())) {
+    case sajson::TYPE_INTEGER:
+      int64_t result;
+      if (value.get_int53_value(&result))
+        return result * 1000;
+      return base::nullopt;
+    case sajson::TYPE_STRING: {
       char* end;
-      int64_t n = strtoll(s.c_str(), &end, 10);
-      if (end != s.data() + s.size())
+      int64_t n = strtoll(value.as_cstring(), &end, 10);
+      if (end != value.as_cstring() + value.get_string_length())
         return base::nullopt;
       return n;
     }
@@ -122,7 +129,7 @@ base::Optional<int64_t> CoerceToInt64(const Json::Value& value) {
   }
 }
 
-base::Optional<uint32_t> CoerceToUint32(const Json::Value& value) {
+base::Optional<uint32_t> CoerceToUint32(const sajson::value& value) {
   base::Optional<int64_t> result = CoerceToInt64(value);
   if (!result.has_value())
     return base::nullopt;
@@ -165,33 +172,48 @@ bool JsonTraceParser::Parse(std::unique_ptr<uint8_t[]> data, size_t size) {
 
   while (next < end) {
     Json::Value value;
-    const auto res = ReadOneJsonDict(next, end, &value, &next);
-    if (res == kFatalError)
-      return false;
+    const char* start;
+    const auto res = ReadOneJsonDict(next, end, &start, &next);
     if (res == kEndOfTrace || res == kNeedsMoreData)
       break;
-    auto& ph = value["ph"];
-    if (!ph.isString())
+    sajson::string mut_input(start, static_cast<size_t>(next - start));
+    sajson::document doc(sajson::parse(sajson::single_allocation(), mut_input));
+    if (!doc.is_valid()) {
+      PERFETTO_ELOG("Invalid!");
+      return false;
+    }
+    sajson::value root = doc.get_root();
+    if (root.get_type() != sajson::TYPE_OBJECT) {
+      PERFETTO_ELOG("not obj!");
+      return false;
+    }
+
+    const auto& ph = root.get_value_of_key(sajson::literal("ph"));
+    if (ph.get_type() != sajson::TYPE_STRING)
       continue;
-    char phase = *ph.asCString();
+    char phase = *ph.as_cstring();
 
-    base::Optional<uint32_t> opt_pid;
-    base::Optional<uint32_t> opt_tid;
-
-    if (value.isMember("pid"))
-      opt_pid = CoerceToUint32(value["pid"]);
-    if (value.isMember("tid"))
-      opt_tid = CoerceToUint32(value["tid"]);
+    base::Optional<uint32_t> opt_pid =
+        CoerceToUint32(root.get_value_of_key(sajson::literal("pid")));
+    base::Optional<uint32_t> opt_tid =
+        CoerceToUint32(root.get_value_of_key(sajson::literal("tid")));
 
     uint32_t pid = opt_pid.value_or(0);
     uint32_t tid = opt_tid.value_or(pid);
 
-    base::Optional<int64_t> opt_ts = CoerceToNs(value["ts"]);
+    base::Optional<int64_t> opt_ts =
+        CoerceToNs(root.get_value_of_key(sajson::literal("ts")));
     PERFETTO_CHECK(opt_ts.has_value());
     int64_t ts = opt_ts.value();
 
-    const char* cat = value.isMember("cat") ? value["cat"].asCString() : "";
-    const char* name = value.isMember("name") ? value["name"].asCString() : "";
+    const auto& cat_value = root.get_value_of_key(sajson::literal("cat"));
+    const auto& name_value = root.get_value_of_key(sajson::literal("name"));
+    const char* cat = (cat_value.get_type() == sajson::TYPE_STRING)
+                          ? cat_value.as_cstring()
+                          : "";
+    const char* name = (cat_value.get_type() == sajson::TYPE_STRING)
+                           ? name_value.as_cstring()
+                           : "";
     StringId cat_id = storage->InternString(cat);
     StringId name_id = storage->InternString(name);
     UniqueTid utid = procs->UpdateThread(tid, pid);
@@ -206,21 +228,30 @@ bool JsonTraceParser::Parse(std::unique_ptr<uint8_t[]> data, size_t size) {
         break;
       }
       case 'X': {  // TRACE_EVENT (scoped event).
-        base::Optional<int64_t> opt_dur = CoerceToNs(value["dur"]);
+
+        base::Optional<int64_t> opt_dur =
+            CoerceToNs(root.get_value_of_key(sajson::literal("dur")));
         if (!opt_dur.has_value())
           continue;
         slice_tracker->Scoped(ts, utid, cat_id, name_id, opt_dur.value());
         break;
       }
       case 'M': {  // Metadata events (process and thread names).
-        if (strcmp(value["name"].asCString(), "thread_name") == 0) {
-          const char* thread_name = value["args"]["name"].asCString();
+        if (strcmp(root.get_value_of_key(sajson::literal("name")).as_cstring(),
+                   "thread_name") == 0) {
+          const char* thread_name =
+              root.get_value_of_key(sajson::literal("args"))
+                  .get_value_of_key(sajson::literal("name"))
+                  .as_cstring();
           auto thrad_name_id = context_->storage->InternString(thread_name);
           procs->UpdateThread(ts, tid, thrad_name_id);
           break;
         }
-        if (strcmp(value["name"].asCString(), "process_name") == 0) {
-          const char* proc_name = value["args"]["name"].asCString();
+        if (strcmp(root.get_value_of_key(sajson::literal("name")).as_cstring(),
+                   "process_name") == 0) {
+          const char* proc_name = root.get_value_of_key(sajson::literal("args"))
+                                      .get_value_of_key(sajson::literal("name"))
+                                      .as_cstring();
           procs->UpdateProcess(pid, base::nullopt, proc_name);
           break;
         }
