@@ -17,9 +17,9 @@
 syntax = "proto2";
 option optimize_for = LITE_RUNTIME;
 
+import "perfetto/common/commit_data_request.proto";
 import "perfetto/config/data_source_config.proto";
 import "perfetto/config/data_source_descriptor.proto";
-import "perfetto/common/commit_data_request.proto";
 
 package perfetto.protos;
 
@@ -64,6 +64,12 @@ service ProducerPort {
   // set the DataSourceDescriptor.will_notify_on_stop flag when registering.
   rpc NotifyDataSourceStopped(NotifyDataSourceStoppedRequest)
       returns (NotifyDataSourceStoppedResponse) {}
+
+  // Sent by the client to request the service to:
+  // 1) Find all sessions which define these triggers
+  // 2) Perform an action as defined in those sessions configs.
+  rpc ActivateTriggers(ActivateTriggersRequest)
+      returns (ActivateTriggersResponse) {}
 
   // This is a backchannel to get asynchronous commands / notifications back
   // from the Service.
@@ -157,6 +163,14 @@ message NotifyDataSourceStoppedRequest {
 }
 
 message NotifyDataSourceStoppedResponse {}
+
+// Arguments for rpc ActivateTriggersRequest().
+
+message ActivateTriggersRequest {
+  repeated string trigger_names = 1;
+}
+
+message ActivateTriggersResponse {}
 
 // Arguments for rpc GetAsyncCommand().
 
