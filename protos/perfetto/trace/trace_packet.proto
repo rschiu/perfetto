@@ -31,6 +31,7 @@ import "perfetto/trace/power/power_rails.proto";
 import "perfetto/trace/profiling/profile_packet.proto";
 import "perfetto/trace/ps/process_stats.proto";
 import "perfetto/trace/ps/process_tree.proto";
+import "perfetto/trace/received_trigger.proto";
 import "perfetto/trace/sys_stats/sys_stats.proto";
 import "perfetto/trace/system_info.proto";
 import "perfetto/trace/test_event.proto";
@@ -44,7 +45,7 @@ package perfetto.protos;
 // TracePacket(s).
 //
 // Next reserved id: 13 (up to 15).
-// Next id: 46.
+// Next id: 47.
 message TracePacket {
   // TODO(primiano): in future we should add a timestamp_clock_domain field to
   // allow mixing timestamps from different clock domains.
@@ -71,6 +72,7 @@ message TracePacket {
     PowerRails power_rails = 40;
     AndroidLogPacket android_log = 39;
     SystemInfo system_info = 45;
+    ReceivedTriggers received_triggers = 46;
 
     // Only used by TrackEvent.
     ProcessDescriptor process_descriptor = 43;

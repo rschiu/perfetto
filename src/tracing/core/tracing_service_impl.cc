@@ -1350,6 +1350,7 @@ void TracingServiceImpl::ReadBuffers(TracingSessionID tsid,
   }
   MaybeEmitTraceConfig(tracing_session, &packets);
   MaybeEmitSystemInfo(tracing_session, &packets);
+  MaybeEmitReceivedTriggers(tracing_session, &packets);
 
   size_t packets_bytes = 0;  // SUM(slice.size() for each slice in |packets|).
   size_t total_slices = 0;   // SUM(#slices in |packets|).
@@ -2106,6 +2107,34 @@ void TracingServiceImpl::MaybeEmitSystemInfo(
     utsname_info->set_release(uname_info.release);
   }
 #endif
+  packet.set_trusted_uid(static_cast<int32_t>(uid_));
+  packet.set_trusted_packet_sequence_id(kServicePacketSequenceID);
+  Slice slice = Slice::Allocate(static_cast<size_t>(packet.ByteSize()));
+  PERFETTO_CHECK(packet.SerializeWithCachedSizesToArray(slice.own_data()));
+  packets->emplace_back();
+  packets->back().AddSlice(std::move(slice));
+}
+
+void TracingServiceImpl::MaybeEmitReceivedTriggers(
+    TracingSession* tracing_session,
+    std::vector<TracePacket>* packets) {
+  if (tracing_session->did_emit_received_triggers) {
+    return;
+  }
+  // Ideally received triggers would see if we've received any new triggers
+  // since we last emitted, but due to the difficultly in determining time
+  // ordering we just emit whatever we have on the first ReadBuffers() call.
+  tracing_session->did_emit_received_triggers = true;
+  if (tracing_session->config.trigger_config().trigger_mode() ==
+      TraceConfig::TriggerConfig::UNSPECIFIED)
+    return;
+  protos::TrustedPacket packet;
+  protos::ReceivedTriggers* triggers = packet.mutable_received_triggers();
+  for (const auto& time_and_trigger : tracing_session->received_triggers) {
+    auto* trigger = triggers->add_triggers();
+    trigger->set_boot_time_ns(time_and_trigger.first);
+    time_and_trigger.second.ToProto(trigger->mutable_trigger());
+  }
   packet.set_trusted_uid(static_cast<int32_t>(uid_));
   packet.set_trusted_packet_sequence_id(kServicePacketSequenceID);
   Slice slice = Slice::Allocate(static_cast<size_t>(packet.ByteSize()));
