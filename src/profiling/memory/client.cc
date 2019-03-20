@@ -115,7 +115,8 @@ const char* GetThreadStackBase() {
 
 Client::Client(base::Optional<base::UnixSocketRaw> sock)
     : sampler_(8192),  // placeholder until we receive the config (within ctor)
-      main_thread_stack_base_(FindMainThreadStack()) {
+      main_thread_stack_base_(FindMainThreadStack()),
+      self_pid_(getpid()) {
   if (!sock || !sock.value()) {
     PERFETTO_DFATAL("Socket not connected.");
     return;
@@ -210,7 +211,7 @@ const char* Client::GetStackBase() {
 bool Client::RecordMalloc(uint64_t alloc_size,
                           uint64_t total_size,
                           uint64_t alloc_address) {
-  if (!inited_.load(std::memory_order_acquire)) {
+  if (!inited_.load(std::memory_order_acquire) || getpid() != self_pid_) {
     return false;
   }
   AllocMetadata metadata;
@@ -254,7 +255,7 @@ bool Client::RecordMalloc(uint64_t alloc_size,
 }
 
 bool Client::RecordFree(const uint64_t alloc_address) {
-  if (!inited_.load(std::memory_order_acquire))
+  if (!inited_.load(std::memory_order_acquire) || getpid() != self_pid_)
     return false;
   bool success = AddFreeToBatch(
       alloc_address,
