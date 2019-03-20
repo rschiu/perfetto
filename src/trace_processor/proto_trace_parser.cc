@@ -289,6 +289,11 @@ void ProtoTraceParser::ParseTracePacket(int64_t ts, TraceBlobView packet) {
         ParseBatteryCounters(ts, packet.slice(fld_off, fld.size()));
         break;
       }
+      case protos::TracePacket::kPowerRailsFieldNumber: {
+        const size_t fld_off = packet.offset_of(fld.data());
+        ParsePowerRails(ts, packet.slice(fld_off, fld.size()));
+        break;
+      }
       case protos::TracePacket::kTraceStatsFieldNumber: {
         const size_t fld_off = packet.offset_of(fld.data());
         ParseTraceStats(packet.slice(fld_off, fld.size()));
@@ -1191,6 +1196,78 @@ void ProtoTraceParser::ParseBatteryCounters(int64_t ts, TraceBlobView battery) {
     }
   }
   PERFETTO_DCHECK(!decoder.bytes_left());
+}
+
+void ProtoTraceParser::ParsePowerRails(TraceBlobView power) {
+  ProtoDecoder decoder(power.data(), power.length());
+  for (auto fld = decoder.ReadField(); fld.valid(); fld = decoder.ReadField()) {
+    switch (fld.id()) {
+      case protos::PowerRails::kRailDescriptorFieldNumber: {
+        const size_t fld_off = power.offset_of(fld.data());
+        ParsePowerRailsDescriptor(power.slice(fld_off, fld.size()));
+        break;
+      }
+      case protos::PowerRails::kEnergyDataFieldNumber: {
+        const size_t fld_off = power.offset_of(fld.data());
+        ParsePowerRailsData(power.slice(fld_off, fld.size()));
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  PERFETTO_DCHECK(!decoder.bytes_left());
+}
+
+void ProtoTraceParser::ParsePowerRailsDescriptor(TraceBlobView desc) {
+  ProtoDecoder decoder(desc.data(), desc.length());
+  uint32_t idx = 0;
+  base::StringView name;
+  for (auto fld = decoder.ReadField(); fld.valid(); fld = decoder.ReadField()) {
+    switch (fld.id()) {
+      case protos::PowerRails::RailDescriptor::kIndexFieldNumber:
+        idx = fld.as_uint32();
+        break;
+      case protos::PowerRails::RailDescriptor::kRailNameFieldNumber:
+        name = fld.as_string();
+        break;
+      default:
+        break;
+    }
+  }
+  if (power_rails_strs_id_.size() <= idx)
+    power_rails_strs_id_.resize(idx + 1);
+  power_rails_strs_id_[idx] = context_->storage->InternString(name);
+  PERFETTO_DCHECK(!decoder.bytes_left());
+}
+
+void ProtoTraceParser::ParsePowerRailsData(TraceBlobView data) {
+  ProtoDecoder decoder(data.data(), data.length());
+  uint32_t idx = 0;
+  int64_t ts = 0;
+  int64_t energy = 0;
+  for (auto fld = decoder.ReadField(); fld.id != 0; fld = decoder.ReadField()) {
+    switch (fld.id) {
+      case protos::PowerRails::EnergyData::kIndexFieldNumber:
+        idx = fld.as_uint32();
+        break;
+      case protos::PowerRails::EnergyData::kTimestampMsFieldNumber:
+        ts = fld.as_int64();
+        break;
+      case protos::PowerRails::EnergyData::kEnergyFieldNumber:
+        energy = fld.as_int64();
+        break;
+      default:
+        break;
+    }
+  }
+  if (idx < power_rails_strs_id_.size()) {
+    context_->event_tracker->PushCounter(ts, energy, power_rails_strs_id_[idx],
+                                         0, RefType::kRefNoRef);
+  } else {
+    context_->storage->IncrementStats(stats::power_rail_unknown_index);
+  }
+  PERFETTO_DCHECK(decoder.IsEndOfBuffer());
 }
 
 void ProtoTraceParser::ParseOOMScoreAdjUpdate(int64_t ts,
