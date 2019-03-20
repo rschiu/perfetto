@@ -133,7 +133,11 @@ const MallocDispatch* GetDispatch() {
 // Note: android_mallopt(M_RESET_HOOKS) is mutually exclusive with initialize
 // (concurrent calls get discarded).
 void ShutdownLazy() {
-  ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Blocking);
+  ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Try);
+  if (PERFETTO_UNLIKELY(!s.locked())) {
+    PERFETTO_ELOG("Failed to acquire spinlock.");
+    return;
+  }
   if (!g_client)  // other invocation already initiated shutdown
     return;
 
@@ -277,7 +281,11 @@ bool HEAPPROFD_ADD_PREFIX(_initialize)(const MallocDispatch* malloc_dispatch,
   // Table of pointers to backing implementation.
   g_dispatch.store(malloc_dispatch, std::memory_order_relaxed);
 
-  ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Blocking);
+  ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Try);
+  if (PERFETTO_UNLIKELY(!s.locked())) {
+    PERFETTO_ELOG("Failed to acquire spinlock.");
+    return false;
+  }
 
   if (g_client) {
     PERFETTO_LOG("Rejecting concurrent profiling initialization.");
@@ -317,7 +325,11 @@ static void MaybeSampleAllocation(size_t size, void* addr) {
   size_t sampled_alloc_sz = 0;
   std::shared_ptr<perfetto::profiling::Client> client;
   {
-    ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Blocking);
+    ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Try);
+    if (PERFETTO_UNLIKELY(!s.locked())) {
+      PERFETTO_ELOG("Failed to acquire spinlock.");
+      return;
+    }
     if (!g_client)  // no active client (most likely shutting down)
       return;
 
@@ -381,8 +393,11 @@ void HEAPPROFD_ADD_PREFIX(_free)(void* pointer) {
   const MallocDispatch* dispatch = GetDispatch();
   std::shared_ptr<perfetto::profiling::Client> client;
   {
-    ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Blocking);
-    client = g_client;  // owning copy (or empty)
+    ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Try);
+    if (PERFETTO_LIKELY(s.locked()))
+      client = g_client;  // owning copy (or empty)
+    else
+      PERFETTO_ELOG("Failed to acquire spinlock.");
   }
 
   if (client) {
@@ -406,10 +421,10 @@ void* HEAPPROFD_ADD_PREFIX(_realloc)(void* pointer, size_t size) {
   size_t sampled_alloc_sz = 0;
   std::shared_ptr<perfetto::profiling::Client> client;
   {
-    ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Blocking);
-    // If there is no active client, we still want to reach the backing realloc,
-    // so keep going.
-    if (g_client) {
+    ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Try);
+    if (PERFETTO_UNLIKELY(!s.locked()) {
+      PERFETTO_ELOG("Failed to acquire spinlock.");
+    } else if (g_client) {
       client = g_client;  // owning copy
       sampled_alloc_sz = g_client->GetSampleSizeLocked(size);
     }
