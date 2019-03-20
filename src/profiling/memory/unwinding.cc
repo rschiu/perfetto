@@ -243,8 +243,9 @@ void UnwindingWorker::OnDisconnect(base::UnixSocket* self) {
   }
   ClientData& client_data = it->second;
   DataSourceInstanceID ds_id = client_data.data_source_instance_id;
+  pid_t peer_pid = self->peer_pid();
   client_data_.erase(it);
-  delegate_->PostSocketDisconnected(ds_id, self->peer_pid());
+  delegate_->PostSocketDisconnected(ds_id, peer_pid);
 }
 
 void UnwindingWorker::OnDataAvailable(base::UnixSocket* self) {
