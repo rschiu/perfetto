@@ -93,6 +93,7 @@ class Client {
   std::timed_mutex free_batch_lock_;
 
   const char* main_thread_stack_base_ = nullptr;
+  const pid_t self_pid_;
   std::atomic<uint64_t> sequence_number_{0};
   SharedRingBuffer shmem_;
 };
