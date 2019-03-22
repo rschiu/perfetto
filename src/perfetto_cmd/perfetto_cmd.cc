@@ -41,6 +41,7 @@
 #include "perfetto/tracing/core/data_source_descriptor.h"
 #include "perfetto/tracing/core/trace_config.h"
 #include "perfetto/tracing/core/trace_packet.h"
+#include "src/perfetto_cmd/activate_triggers.h"
 #include "src/perfetto_cmd/config.h"
 #include "src/perfetto_cmd/pbtxt_to_pb.h"
 
@@ -138,6 +139,7 @@ Usage: %s
   --no-guardrails         : Ignore guardrails triggered when using --dropbox (for testing).
   --txt                   : Parse config as pbtxt. Not a stable API. Not for production use.
   --reset-guardrails      : Resets the state of the guardails and exits (for testing).
+  --activate-trigger      : A trigger_name to activate on to the service. If specified multiple times will activate them all.
   --help           -h
 
 
@@ -172,6 +174,7 @@ int PerfettoCmd::Main(int argc, char** argv) {
     OPT_CONFIG_UID,
     OPT_SUBSCRIPTION_ID,
     OPT_RESET_GUARDRAILS,
+    OPT_ACTIVATE_TRIGGER,
     OPT_PBTXT_CONFIG,
     OPT_DROPBOX,
     OPT_ATRACE_APP,
@@ -197,6 +200,7 @@ int PerfettoCmd::Main(int argc, char** argv) {
       {"config-uid", required_argument, nullptr, OPT_CONFIG_UID},
       {"subscription-id", required_argument, nullptr, OPT_SUBSCRIPTION_ID},
       {"reset-guardrails", no_argument, nullptr, OPT_RESET_GUARDRAILS},
+      {"activate-trigger", required_argument, nullptr, OPT_ACTIVATE_TRIGGER},
       {"detach", required_argument, nullptr, OPT_DETACH},
       {"attach", required_argument, nullptr, OPT_ATTACH},
       {"is_detached", required_argument, nullptr, OPT_IS_DETACHED},
@@ -215,6 +219,7 @@ int PerfettoCmd::Main(int argc, char** argv) {
 
   ConfigOptions config_options;
   bool has_config_options = false;
+  std::vector<std::string> triggers_to_activate;
 
   for (;;) {
     int option =
@@ -304,6 +309,14 @@ int PerfettoCmd::Main(int argc, char** argv) {
       return 0;
     }
 
+    if (option == OPT_ACTIVATE_TRIGGER) {
+      if (!optarg) {
+        PERFETTO_FATAL("optarg is null");
+      }
+      triggers_to_activate.push_back(std::string(optarg));
+      continue;
+    }
+
     if (option == OPT_ALERT_ID) {
       statsd_metadata.set_triggering_alert_id(atoll(optarg));
       continue;
@@ -390,6 +403,10 @@ int PerfettoCmd::Main(int argc, char** argv) {
       PERFETTO_ELOG("Cannot specify a trace config with --attach");
       return 1;
     }
+    if (!triggers_to_activate.empty()) {
+      PERFETTO_ELOG("Cannot specify triggers to activate with --attach");
+      return 1;
+    }
   } else if (has_config_options) {
     if (!trace_config_raw.empty()) {
       PERFETTO_ELOG(
@@ -399,7 +416,7 @@ int PerfettoCmd::Main(int argc, char** argv) {
     }
     parsed = CreateConfigFromOptions(config_options, &trace_config_proto);
   } else {
-    if (trace_config_raw.empty()) {
+    if (trace_config_raw.empty() && triggers_to_activate.empty()) {
       PERFETTO_ELOG("The TraceConfig is empty");
       return 1;
     }
@@ -440,6 +457,8 @@ int PerfettoCmd::Main(int argc, char** argv) {
       PERFETTO_ELOG("Can't pass an --out file (or --dropbox) to --attach");
       return 1;
     }
+  } else if (!triggers_to_activate.empty()) {
+    open_out_file = false;
   } else if (trace_out_path_.empty() && dropbox_tag_.empty()) {
     PERFETTO_ELOG("Either --out or --dropbox is required");
     return 1;
@@ -476,6 +495,26 @@ int PerfettoCmd::Main(int argc, char** argv) {
         printf("%d\n", pid);
         exit(0);
     }
+  }
+
+  // If we are just activating triggers then we don't need to rate limit,
+  // connect as a consumer or run the trace. So bail out after processing all
+  // the options.
+  if (!triggers_to_activate.empty()) {
+    if (has_config_options || !trace_config_raw.empty()) {
+      PERFETTO_ELOG(
+          "--activate-trigger and trace config cannot be used together.");
+      return 1;
+    }
+    bool success = false;
+    auto producer =
+        ActivateTriggers(triggers_to_activate, &task_runner_, &success);
+    task_runner_.Run();
+    if (!success) {
+      PERFETTO_ELOG("Failed to activate triggers");
+      return 1;
+    }
+    return 0;
   }
 
   RateLimiter::Args args{};
@@ -576,6 +615,19 @@ void PerfettoCmd::OnTracingDisabled() {
 
 void PerfettoCmd::FinalizeTraceAndExit() {
   fflush(*trace_out_stream_);
+  if (bytes_written_ == 0) {
+    if (trace_out_path_ != "-") {
+      if (remove(trace_out_path_.c_str())) {
+        PERFETTO_ELOG("Failed to clean up empty file '%s'",
+                      trace_out_path_.c_str());
+      } else {
+        PERFETTO_ILOG("No bytes written. Deleting file.");
+      }
+    }
+    did_process_full_trace_ = true;
+    task_runner_.Quit();
+    return;
+  }
   if (dropbox_tag_.empty()) {
     trace_out_stream_.reset();
     did_process_full_trace_ = true;

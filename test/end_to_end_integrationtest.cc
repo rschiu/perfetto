@@ -26,6 +26,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "perfetto/base/build_config.h"
+#include "perfetto/base/file_utils.h"
 #include "perfetto/base/logging.h"
 #include "perfetto/base/pipe.h"
 #include "perfetto/traced/traced.h"
@@ -39,6 +40,7 @@
 #include "test/task_runner_thread_delegates.h"
 #include "test/test_helper.h"
 
+#include "perfetto/trace/trace.pb.h"
 #include "perfetto/trace/trace_packet.pb.h"
 #include "perfetto/trace/trace_packet.pbzero.h"
 
@@ -117,6 +119,8 @@ class PerfettoCmdlineTest : public ::testing::Test {
       PERFETTO_CHECK(dup2(*err_pipe.wr, STDERR_FILENO) != -1);
 #if PERFETTO_BUILDFLAG(PERFETTO_START_DAEMONS)
       setenv("PERFETTO_CONSUMER_SOCK_NAME", TestHelper::GetConsumerSocketName(),
+             1);
+      setenv("PERFETTO_PRODUCER_SOCK_NAME", TestHelper::GetProducerSocketName(),
              1);
       _exit(PerfettoCmdMain(static_cast<int>(argv.size() - 1), argv.data()));
 #else
@@ -590,6 +594,303 @@ TEST_F(PerfettoCmdlineTest, NoSanitizers(DetachAndAttach)) {
             Exec({"-o", "-", "-c", "-", "--txt", "--detach=valid_stop"}, cfg))
       << stderr_;
   EXPECT_EQ(0, Exec({"--attach=valid_stop", "--stop"}));
+}
+
+TEST_F(PerfettoCmdlineTest, NoSanitizers(StartTracingTrigger)) {
+  std::string cfg = R"(
+    buffers: {
+      size_kb: 8960
+      fill_policy: DISCARD
+    }
+    buffers: {
+      size_kb: 1280
+      fill_policy: DISCARD
+    }
+    data_sources: {
+      config {
+        name: "android.perfetto.FakeProducer"
+        for_testing {
+          message_count: 11
+          message_size: 32
+        }
+      }
+    }
+    trigger_config {
+      trigger_mode: START_TRACING
+      trigger_timeout_ms: 15000
+      triggers {
+        name: "trigger_name"
+        # |stop_delay_ms| must be long enough that we can write the packets in
+        # before the trace finishes. This has to be long enough for the slowest
+        # emulator. But as short as possible to prevent the test running a long
+        # time.
+        stop_delay_ms: 500
+      }
+    }
+  )";
+  // See |message_count| and |message_size| in the TraceConfig above.
+  constexpr size_t kMessageCount = 11;
+  constexpr size_t kMessageSize = 32;
+
+  // We have 5 normal preample packets (trace config, clock, system info, sync
+  // marker, stats) and then since this is a trace with a trigger config we have
+  // an additional ReceivedTriggers packet.
+  constexpr size_t kPreamblePackets = 6;
+
+  base::TestTaskRunner task_runner;
+
+  // Enable tracing and detach as soon as it gets started.
+  TestHelper helper(&task_runner);
+  helper.StartServiceIfRequired();
+  auto* fake_producer = helper.ConnectFakeProducer();
+  EXPECT_TRUE(fake_producer);
+
+  std::thread background_trace([cfg, this]() {
+    EXPECT_EQ(0, Exec(
+                     {
+                         "-o", "/tmp/output.perfetto-trace", "-c", "-", "--txt",
+                     },
+                     cfg));
+  });
+
+  helper.WaitForProducerSetup();
+  EXPECT_EQ(0, Exec({"--activate-trigger=trigger_name"}))
+      << "stderr: " << stderr_;
+
+  // Wait for the producer to start, and then write out 11 packets.
+  helper.WaitForProducerEnabled();
+  auto on_data_written = task_runner.CreateCheckpoint("data_written");
+  fake_producer->ProduceEventBatch(helper.WrapTask(on_data_written));
+  task_runner.RunUntilCheckpoint("data_written");
+  background_trace.join();
+
+  std::string trace_str;
+  base::ReadFile("/tmp/output.perfetto-trace", &trace_str);
+  protos::Trace trace;
+  ASSERT_TRUE(trace.ParseFromString(trace_str));
+  EXPECT_EQ(kPreamblePackets + kMessageCount, trace.packet_size());
+  for (const auto& packet : trace.packet()) {
+    switch (packet.data_case()) {
+      case protos::TracePacket::kTraceConfig:
+        // Ensure the trace config properly includes the trigger mode we set.
+        EXPECT_EQ(protos::TraceConfig::TriggerConfig::START_TRACING,
+                  packet.trace_config().trigger_config().trigger_mode());
+        break;
+      case protos::TracePacket::kTriggers:
+        // validate that the triggers are properly added to the trace.
+        ASSERT_EQ(1, packet.triggers().triggers_size());
+        EXPECT_EQ("trigger_name", packet.triggers().triggers(0).trigger_name());
+        break;
+      case protos::TracePacket::kForTesting:
+        // Make sure that the data size is correctly set based on what we
+        // requested.
+        EXPECT_EQ(kMessageSize, packet.for_testing().str().size());
+        break;
+      case protos::TracePacket::kClockSnapshot:
+      case protos::TracePacket::kTraceStats:
+      case protos::TracePacket::kSystemInfo:
+      case protos::TracePacket::kSynchronizationMarker:
+        // Preamble packets, that we don't really need to verify contents.
+        break;
+      case protos::TracePacket::kFtraceEvents:
+      case protos::TracePacket::kProcessTree:
+      case protos::TracePacket::kProcessStats:
+      case protos::TracePacket::kInodeFileMap:
+      case protos::TracePacket::kChromeEvents:
+      case protos::TracePacket::kSysStats:
+      case protos::TracePacket::kTrackEvent:
+      case protos::TracePacket::kFtraceStats:
+      case protos::TracePacket::kProfilePacket:
+      case protos::TracePacket::kBattery:
+      case protos::TracePacket::kPowerRails:
+      case protos::TracePacket::kAndroidLog:
+      case protos::TracePacket::kProcessDescriptor:
+      case protos::TracePacket::kThreadDescriptor:
+      case protos::TracePacket::DATA_NOT_SET:
+        ADD_FAILURE() << "Unexpected packet: " << packet.data_case();
+        break;
+    }
+  }
+}
+
+TEST_F(PerfettoCmdlineTest, NoSanitizers(StopTracingTrigger)) {
+  std::string cfg = R"(
+    buffers: {
+      size_kb: 8960
+      fill_policy: DISCARD
+    }
+    buffers: {
+      size_kb: 1280
+      fill_policy: DISCARD
+    }
+    data_sources: {
+      config {
+        name: "android.perfetto.FakeProducer"
+        for_testing {
+          message_count: 11
+          message_size: 32
+        }
+      }
+    }
+    trigger_config {
+      trigger_mode: STOP_TRACING
+      trigger_timeout_ms: 60000
+      triggers {
+        name: "trigger_name"
+        # |stop_delay_ms| must be long enough that we can write the packets in
+        # before the trace finishes. This has to be long enough for the slowest
+        # emulator. But as short as possible to prevent the test running a long
+        # time.
+        stop_delay_ms: 500
+      }
+      triggers {
+        name: "trigger_name_3"
+        # This stop delay should not be hit so choose a large value.
+        stop_delay_ms: 60000
+      }
+    }
+  )";
+  // See |message_count| and |message_size| in the TraceConfig above.
+  constexpr size_t kMessageCount = 11;
+  constexpr size_t kMessageSize = 32;
+
+  // We have 5 normal preample packets (trace config, clock, system info, sync
+  // marker, stats) and then since this is a trace with a trigger config we have
+  // an additional ReceivedTriggers packet.
+  constexpr size_t kPreamblePackets = 6;
+
+  base::TestTaskRunner task_runner;
+
+  // Enable tracing and detach as soon as it gets started.
+  TestHelper helper(&task_runner);
+  helper.StartServiceIfRequired();
+  auto* fake_producer = helper.ConnectFakeProducer();
+  EXPECT_TRUE(fake_producer);
+
+  std::thread background_trace([cfg, this]() {
+    EXPECT_EQ(0, Exec(
+                     {
+                         "-o", "/tmp/output.perfetto-trace", "-c", "-", "--txt",
+                     },
+                     cfg));
+  });
+
+  helper.WaitForProducerEnabled();
+  // Wait for the producer to start, and then write out 11 packets, before the
+  // trace actually starts (the trigger is seen).
+  auto on_data_written = task_runner.CreateCheckpoint("data_written_1");
+  fake_producer->ProduceEventBatch(helper.WrapTask(on_data_written));
+  task_runner.RunUntilCheckpoint("data_written_1");
+
+  EXPECT_EQ(0, Exec({"--activate-trigger=trigger_name_2",
+                     "--activate-trigger=trigger_name",
+                     "--activate-trigger=trigger_name_3"}))
+      << "stderr: " << stderr_;
+
+  background_trace.join();
+
+  std::string trace_str;
+  base::ReadFile("/tmp/output.perfetto-trace", &trace_str);
+  protos::Trace trace;
+  ASSERT_TRUE(trace.ParseFromString(trace_str));
+  EXPECT_EQ(kPreamblePackets + kMessageCount, trace.packet_size());
+  for (const auto& packet : trace.packet()) {
+    switch (packet.data_case()) {
+      case protos::TracePacket::kTraceConfig:
+        // Ensure the trace config properly includes the trigger mode we set.
+        EXPECT_EQ(protos::TraceConfig::TriggerConfig::STOP_TRACING,
+                  packet.trace_config().trigger_config().trigger_mode());
+        break;
+      case protos::TracePacket::kTriggers:
+        // validate that the triggers are properly added to the trace.
+        ASSERT_EQ(2, packet.triggers().triggers_size());
+        EXPECT_EQ("trigger_name", packet.triggers().triggers(0).trigger_name());
+        EXPECT_EQ("trigger_name_3",
+                  packet.triggers().triggers(1).trigger_name());
+        break;
+      case protos::TracePacket::kForTesting:
+        // Make sure that the data size is correctly set based on what we
+        // requested.
+        EXPECT_EQ(kMessageSize, packet.for_testing().str().size());
+        break;
+      case protos::TracePacket::kClockSnapshot:
+      case protos::TracePacket::kTraceStats:
+      case protos::TracePacket::kSystemInfo:
+      case protos::TracePacket::kSynchronizationMarker:
+        // Preamble packets, that we don't really need to verify contents.
+        break;
+      case protos::TracePacket::kFtraceEvents:
+      case protos::TracePacket::kProcessTree:
+      case protos::TracePacket::kProcessStats:
+      case protos::TracePacket::kInodeFileMap:
+      case protos::TracePacket::kChromeEvents:
+      case protos::TracePacket::kSysStats:
+      case protos::TracePacket::kTrackEvent:
+      case protos::TracePacket::kFtraceStats:
+      case protos::TracePacket::kProfilePacket:
+      case protos::TracePacket::kBattery:
+      case protos::TracePacket::kPowerRails:
+      case protos::TracePacket::kAndroidLog:
+      case protos::TracePacket::kProcessDescriptor:
+      case protos::TracePacket::kThreadDescriptor:
+      case protos::TracePacket::DATA_NOT_SET:
+        ADD_FAILURE() << "Unexpected packet: " << packet.data_case();
+        break;
+    }
+  }
+}
+
+TEST_F(PerfettoCmdlineTest, NoSanitizers(NoDataNoFileWithoutTrigger)) {
+  std::string cfg = R"(
+    buffers: {
+      size_kb: 8960
+      fill_policy: DISCARD
+    }
+    buffers: {
+      size_kb: 1280
+      fill_policy: DISCARD
+    }
+    data_sources: {
+      config {
+        name: "android.perfetto.FakeProducer"
+        for_testing {
+          message_count: 11
+          message_size: 32
+        }
+      }
+    }
+    trigger_config {
+      trigger_mode: STOP_TRACING
+      trigger_timeout_ms: 1
+      triggers {
+        name: "trigger_name"
+        stop_delay_ms: 500
+      }
+    }
+  )";
+
+  // Enable tracing and detach as soon as it gets started.
+  base::TestTaskRunner task_runner;
+  TestHelper helper(&task_runner);
+  helper.StartServiceIfRequired();
+  auto* fake_producer = helper.ConnectFakeProducer();
+  EXPECT_TRUE(fake_producer);
+
+  std::thread background_trace([cfg, this]() {
+    EXPECT_EQ(0, Exec(
+                     {
+                         "-o", "/tmp/output.perfetto-trace", "-c", "-", "--txt",
+                     },
+                     cfg));
+  });
+
+  background_trace.join();
+
+  EXPECT_THAT(stderr_,
+              ::testing::HasSubstr("No bytes written. Deleting file."));
+  std::string trace_str;
+  EXPECT_FALSE(base::ReadFile("/tmp/output.perfetto-trace", &trace_str));
+  EXPECT_EQ("", trace_str);
 }
 
 }  // namespace perfetto
