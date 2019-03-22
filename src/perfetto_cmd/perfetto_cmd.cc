@@ -497,11 +497,26 @@ int PerfettoCmd::Main(int argc, char** argv) {
     }
   }
 
+  if (!trace_config_->activate_triggers().empty()) {
+    if (!triggers_to_activate.empty()) {
+      PERFETTO_ELOG(
+          "--activate-trigger and trace config both trying to activate "
+          "triggers. Should only use --activate-trigger");
+      return 1;
+    }
+    for (const auto& trigger : trace_config_->activate_triggers()) {
+      triggers_to_activate.push_back(trigger);
+    }
+  }
+
   // If we are just activating triggers then we don't need to rate limit,
   // connect as a consumer or run the trace. So bail out after processing all
   // the options.
   if (!triggers_to_activate.empty()) {
-    if (has_config_options || !trace_config_raw.empty()) {
+    if (!trace_config_->activate_triggers().empty()) {
+      PERFETTO_ILOG(
+          "Using triggers from trace config. This is deprecated post Q.");
+    } else if (has_config_options || !trace_config_raw.empty()) {
       PERFETTO_ELOG(
           "--activate-trigger and trace config cannot be used together.");
       return 1;
