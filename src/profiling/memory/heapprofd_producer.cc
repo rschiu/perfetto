@@ -220,6 +220,15 @@ void HeapprofdProducer::DoContinuousDump(DataSourceInstanceID id,
       dump_interval);
 }
 
+bool HeapprofdProducer::IsPidProfiled(pid_t pid) {
+  for (const auto& pair : data_sources_) {
+    const DataSource& ds = pair.second;
+    if (ds.process_states.find(pid) != ds.process_states.cend())
+      return true;
+  }
+  return false;
+}
+
 void HeapprofdProducer::StartDataSource(DataSourceInstanceID id,
                                         const DataSourceConfig& cfg) {
   PERFETTO_DLOG("Start DataSource");
@@ -261,11 +270,18 @@ void HeapprofdProducer::StartDataSource(DataSourceInstanceID id,
       FindPidsForCmdlines(heapprofd_config.process_cmdline(), &pids);
 
     for (pid_t pid : pids) {
+      if (IsPidProfiled(pid)) {
+        PERFETTO_LOG("Rejecting concurrent session for %d", pid);
+        data_source.rejected_pids.emplace(pid);
+        continue;
+      }
+
       PERFETTO_DLOG("Sending %d to %d", kHeapprofdSignal, pid);
       if (kill(pid, kHeapprofdSignal) != 0) {
         PERFETTO_DPLOG("kill");
       }
     }
+    data_source.signaled_pids = std::move(pids);
   }
 
   const auto continuous_dump_config = heapprofd_config.continuous_dump_config();
@@ -299,8 +315,8 @@ void HeapprofdProducer::StopDataSource(DataSourceInstanceID id) {
   }
 
   DataSource& data_source = it->second;
-  for (const auto& pid_and_heap_tracker : data_source.heap_trackers) {
-    pid_t pid = pid_and_heap_tracker.first;
+  for (const auto& pid_and_process_state : data_source.process_states) {
+    pid_t pid = pid_and_process_state.first;
     UnwinderForPID(pid).PostDisconnectSocket(pid);
   }
 
@@ -325,11 +341,28 @@ bool HeapprofdProducer::Dump(DataSourceInstanceID id,
 
   DumpState dump_state(data_source.trace_writer.get(), &next_index_);
 
-  for (std::pair<const pid_t, HeapTracker>& pid_and_heap_tracker :
-       data_source.heap_trackers) {
-    pid_t pid = pid_and_heap_tracker.first;
-    HeapTracker& heap_tracker = pid_and_heap_tracker.second;
-    heap_tracker.Dump(pid, &dump_state);
+  for (pid_t rejected_pid : data_source.rejected_pids) {
+    ProfilePacket::ProcessHeapSamples* proto =
+        dump_state.current_profile_packet->add_process_dumps();
+    proto->set_pid(static_cast<uint64_t>(rejected_pid));
+    proto->set_rejected_concurrent(true);
+  }
+
+  for (std::pair<const pid_t, ProcessState>& pid_and_process_state :
+       data_source.process_states) {
+    pid_t pid = pid_and_process_state.first;
+    ProcessState& process_state = pid_and_process_state.second;
+    HeapTracker& heap_tracker = process_state.heap_tracker;
+    bool from_startup =
+        data_source.signaled_pids.find(pid) == data_source.signaled_pids.cend();
+    uint64_t unwinding_errors = process_state.unwinding_errors;
+    auto new_heapsamples = [pid, from_startup, unwinding_errors](
+                               ProfilePacket::ProcessHeapSamples* proto) {
+      proto->set_pid(static_cast<uint64_t>(pid));
+      proto->set_from_startup(from_startup);
+      proto->set_stats()->set_unwinding_errors(unwinding_errors);
+    };
+    heap_tracker.Dump(std::move(new_heapsamples), &dump_state);
   }
 
   for (GlobalCallstackTrie::Node* node : dump_state.callstacks_to_dump) {
@@ -517,7 +550,8 @@ void HeapprofdProducer::SocketDelegate::OnDataAvailable(
     }
 
     DataSource& data_source = ds_it->second;
-    data_source.heap_trackers.emplace(self->peer_pid(), &producer_->callsites_);
+    data_source.process_states.emplace(self->peer_pid(),
+                                       &producer_->callsites_);
 
     PERFETTO_DLOG("%d: Received FDs.", self->peer_pid());
     int raw_fd = pending_process.shmem.fd();
@@ -547,18 +581,31 @@ void HeapprofdProducer::SocketDelegate::OnDataAvailable(
 
 HeapprofdProducer::DataSource* HeapprofdProducer::GetDataSourceForProcess(
     const Process& proc) {
+  DataSource* match = nullptr;
   for (auto& ds_id_and_datasource : data_sources_) {
     DataSource& ds = ds_id_and_datasource.second;
-    if (ds.config.all())
-      return &ds;
+    if (ds.config.all()) {
+      if (!match)
+        match = &ds;
+      else
+        ds.rejected_pids.emplace(proc.pid);
+    }
 
     for (uint64_t pid : ds.config.pid()) {
-      if (static_cast<pid_t>(pid) == proc.pid)
-        return &ds;
+      if (static_cast<pid_t>(pid) == proc.pid) {
+        if (!match)
+          match = &ds;
+        else
+          ds.rejected_pids.emplace(proc.pid);
+      }
     }
     for (const std::string& cmdline : ds.config.process_cmdline()) {
-      if (cmdline == proc.cmdline)
-        return &ds;
+      if (cmdline == proc.cmdline) {
+        if (!match)
+          match = &ds;
+        else
+          ds.rejected_pids.emplace(proc.pid);
+      }
     }
   }
   return nullptr;
@@ -632,8 +679,8 @@ void HeapprofdProducer::HandleAllocRecord(AllocRecord alloc_rec) {
   }
 
   DataSource& ds = it->second;
-  auto heap_tracker_it = ds.heap_trackers.find(alloc_rec.pid);
-  if (heap_tracker_it == ds.heap_trackers.end()) {
+  auto process_state_it = ds.process_states.find(alloc_rec.pid);
+  if (process_state_it == ds.process_states.end()) {
     PERFETTO_LOG("Invalid PID in alloc record.");
     return;
   }
@@ -651,7 +698,11 @@ void HeapprofdProducer::HandleAllocRecord(AllocRecord alloc_rec) {
     }
   }
 
-  HeapTracker& heap_tracker = heap_tracker_it->second;
+  ProcessState& process_state = process_state_it->second;
+  HeapTracker& heap_tracker = process_state.heap_tracker;
+
+  if (alloc_rec.error)
+    process_state.unwinding_errors++;
 
   heap_tracker.RecordMalloc(alloc_rec.frames, alloc_metadata.alloc_address,
                             alloc_metadata.total_size,
@@ -667,13 +718,14 @@ void HeapprofdProducer::HandleFreeRecord(FreeRecord free_rec) {
   }
 
   DataSource& ds = it->second;
-  auto heap_tracker_it = ds.heap_trackers.find(free_rec.pid);
-  if (heap_tracker_it == ds.heap_trackers.end()) {
+  auto process_state_it = ds.process_states.find(free_rec.pid);
+  if (process_state_it == ds.process_states.end()) {
     PERFETTO_LOG("Invalid PID in free record.");
     return;
   }
 
-  HeapTracker& heap_tracker = heap_tracker_it->second;
+  ProcessState& process_state = process_state_it->second;
+  HeapTracker& heap_tracker = process_state.heap_tracker;
 
   const FreeBatchEntry* entries = free_batch.entries;
   uint64_t num_entries = free_batch.num_entries;

@@ -143,13 +143,22 @@ class HeapprofdProducer : public Producer, public UnwindingWorker::Delegate {
   // from the target process, invoking the on-connection callback.
   void AdoptTargetProcessSocket();
 
+  struct ProcessState {
+    ProcessState(GlobalCallstackTrie* callsites) : heap_tracker(callsites) {}
+    uint64_t start_timestamp = 0;
+    uint64_t unwinding_errors = 0;
+    HeapTracker heap_tracker;
+  };
+
   struct DataSource {
     DataSourceInstanceID id;
     std::unique_ptr<TraceWriter> trace_writer;
     HeapprofdConfig config;
     ClientConfiguration client_configuration;
     std::vector<SystemProperties::Handle> properties;
-    std::map<pid_t, HeapTracker> heap_trackers;
+    std::set<pid_t> signaled_pids;
+    std::set<pid_t> rejected_pids;
+    std::map<pid_t, ProcessState> process_states;
   };
 
   struct PendingProcess {
@@ -160,6 +169,7 @@ class HeapprofdProducer : public Producer, public UnwindingWorker::Delegate {
 
   std::map<pid_t, PendingProcess> pending_processes_;
 
+  bool IsPidProfiled(pid_t);
   DataSource* GetDataSourceForProcess(const Process& proc);
 
   std::map<DataSourceInstanceID, DataSource> data_sources_;
