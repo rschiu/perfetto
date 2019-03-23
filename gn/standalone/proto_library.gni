@@ -21,9 +21,6 @@ template("proto_library") {
   if (defined(invoker.proto_in_dir)) {
     proto_in_dir = invoker.proto_in_dir
   }
-  assert(defined(invoker.proto_out_dir),
-         "proto_out_dir must be explicitly defined")
-  proto_out_dir = invoker.proto_out_dir
 
   # We don't support generate_python in the standalone build, but still must
   # check that the caller sets this to false. This is because when building in
@@ -66,7 +63,7 @@ template("proto_library") {
     }
   }
 
-  cc_out_dir = "$root_gen_dir/" + proto_out_dir
+  cc_out_dir = target_gen_dir
   rel_cc_out_dir = rebase_path(cc_out_dir, root_build_dir)
 
   protos = rebase_path(proto_sources, proto_in_dir)
@@ -214,6 +211,9 @@ template("proto_library") {
     deps += [ ":$action_name" ]
     if (defined(invoker.link_deps)) {
       deps += invoker.link_deps
+    }
+    if (defined(invoker.deps)) {
+      deps += invoker.deps
     }
   }  # source_set(target_name)
 }  # template

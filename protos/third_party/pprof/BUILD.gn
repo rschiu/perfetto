@@ -21,5 +21,4 @@ proto_library("lite") {
     "profile.proto",
   ]
   proto_in_dir = "$perfetto_root_path/protos"
-  proto_out_dir = "$perfetto_root_path/protos"
 }

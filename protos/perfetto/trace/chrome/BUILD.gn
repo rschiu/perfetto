@@ -21,23 +21,28 @@ minimal_chrome_proto_names = [ "chrome_trace_packet.proto" ]
 proto_library("lite") {
   generate_python = false
   sources = chrome_proto_names
+  deps = [
+    "$perfetto_root_path/protos/perfetto/common:lite",
+  ]
   proto_in_dir = "$perfetto_root_path/protos"
-  proto_out_dir = "$perfetto_root_path/protos"
 }
 
 protozero_library("zero") {
   deps = [
+    "$perfetto_root_path/protos/perfetto/common:zero",
     "../interned_data:zero",
     "../track_event:zero",
   ]
   sources = chrome_proto_names
   proto_in_dir = "$perfetto_root_path/protos"
-  proto_out_dir = "$perfetto_root_path/protos"
   generator_plugin_options = "wrapper_namespace=pbzero"
 }
 
 proto_library("minimal_complete_lite") {
   generate_python = false
+  deps = [
+    "$perfetto_root_path/protos/perfetto/common:lite",
+  ]
   link_deps = [
     ":lite",
     "../:minimal_lite",
@@ -47,5 +52,4 @@ proto_library("minimal_complete_lite") {
   ]
   sources = minimal_chrome_proto_names
   proto_in_dir = "$perfetto_root_path/protos"
-  proto_out_dir = "$perfetto_root_path/protos"
 }

@@ -29,13 +29,13 @@ common_sources = [
 proto_library("lite") {
   generate_python = false
   proto_in_dir = "$perfetto_root_path/protos"
-  proto_out_dir = "$perfetto_root_path/protos"
+
   sources = common_sources
 }
 
 protozero_library("zero") {
   proto_in_dir = "$perfetto_root_path/protos"
-  proto_out_dir = "$perfetto_root_path/protos"
+
   sources = common_sources
   generator_plugin_options = "wrapper_namespace=pbzero"
 }

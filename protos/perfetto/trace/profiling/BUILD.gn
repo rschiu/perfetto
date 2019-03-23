@@ -22,12 +22,11 @@ proto_library("lite") {
   generate_python = false
   sources = profiling_proto_names
   proto_in_dir = "$perfetto_root_path/protos"
-  proto_out_dir = "$perfetto_root_path/protos"
 }
 
 protozero_library("zero") {
   sources = profiling_proto_names
   proto_in_dir = "$perfetto_root_path/protos"
-  proto_out_dir = "$perfetto_root_path/protos"
+
   generator_plugin_options = "wrapper_namespace=pbzero"
 }

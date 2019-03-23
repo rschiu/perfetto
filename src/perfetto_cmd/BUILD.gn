@@ -56,7 +56,6 @@ proto_library("protos") {
     "perfetto_cmd_state.proto",
   ]
   proto_in_dir = perfetto_root_path
-  proto_out_dir = perfetto_root_path
 }
 
 source_set("unittests") {

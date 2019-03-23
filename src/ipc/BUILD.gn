@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("../../gn/perfetto.gni")
 import("../../gn/fuzzer.gni")
 import("../../gn/ipc_library.gni")
+import("../../gn/perfetto.gni")
 import("../../gn/proto_library.gni")
 
 # For use_libfuzzer.
@@ -88,7 +88,6 @@ proto_library("wire_protocol") {
     "wire_protocol.proto",
   ]
   proto_in_dir = perfetto_root_path
-  proto_out_dir = perfetto_root_path
 }
 
 ipc_library("test_messages") {
@@ -98,5 +97,4 @@ ipc_library("test_messages") {
     "test/greeter_service.proto",
   ]
   proto_in_dir = perfetto_root_path
-  proto_out_dir = perfetto_root_path
 }

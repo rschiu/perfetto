@@ -80,7 +80,6 @@ testing_proto_sources = [
 protozero_library("testing_messages_zero") {
   sources = testing_proto_sources
   proto_in_dir = perfetto_root_path
-  proto_out_dir = perfetto_root_path
   generator_plugin_options = "wrapper_namespace=pbzero"
 }
 
@@ -88,5 +87,4 @@ proto_library("testing_messages_lite") {
   generate_python = false
   sources = testing_proto_sources
   proto_in_dir = perfetto_root_path
-  proto_out_dir = perfetto_root_path
 }

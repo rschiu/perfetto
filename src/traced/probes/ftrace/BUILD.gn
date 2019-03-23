@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import("../../../../gn/fuzzer.gni")
 import("../../../../gn/perfetto.gni")
 import("../../../../gn/proto_library.gni")
-import("../../../../gn/fuzzer.gni")
 import("../../../../gn/protozero_library.gni")
 
 # For use_libfuzzer.
@@ -74,7 +74,6 @@ ftrace_reader_test_proto_sources = [ "test/test_messages.proto" ]
 protozero_library("test_messages_zero") {
   sources = ftrace_reader_test_proto_sources
   proto_in_dir = perfetto_root_path
-  proto_out_dir = perfetto_root_path
   generator_plugin_options = "wrapper_namespace=pbzero"
 }
 
@@ -82,7 +81,6 @@ proto_library("test_messages_lite") {
   generate_python = false
   sources = ftrace_reader_test_proto_sources
   proto_in_dir = perfetto_root_path
-  proto_out_dir = perfetto_root_path
 }
 
 # These tests require access to a real ftrace implementation and must
