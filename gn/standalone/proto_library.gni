@@ -162,6 +162,10 @@ template("proto_library") {
         deps += [ plugin_host_label ]
       }
     }
+
+    if (defined(invoker.deps)) {
+      deps += invoker.deps
+    }
   }  # action "${target_name}_gen"
 
   # The source_set that builds the generated .pb.cc files.
@@ -204,8 +208,8 @@ template("proto_library") {
     }
 
     deps += [ ":$action_name" ]
-    if (defined(invoker.link_deps)) {
-      deps += invoker.link_deps
+    if (defined(invoker.deps)) {
+      deps += invoker.deps
     }
   }  # source_set(target_name)
 }  # template
