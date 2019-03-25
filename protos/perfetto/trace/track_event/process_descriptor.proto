@@ -24,12 +24,15 @@ package perfetto.protos;
 //
 // Next id: 5.
 message ProcessDescriptor {
+  // CHROME_FIELD_WHITELIST_BEGIN
   optional int32 pid = 1;
+  // CHROME_FIELD_WHITELIST_END
   repeated string cmdline = 2;
 
   // To support old UI. New UI should determine default sorting by process_type.
   optional int32 legacy_sort_index = 3;
 
+  // CHROME_FIELD_WHITELIST_BEGIN
   // See chromium's content::ProcessType.
   enum ChromeProcessType {
     PROCESS_UNSPECIFIED = 0;
@@ -43,4 +46,5 @@ message ProcessDescriptor {
     PROCESS_PPAPI_BROKER = 8;
   }
   optional ChromeProcessType chrome_process_type = 4;
+  // CHROME_FIELD_WHITELIST_END
 }

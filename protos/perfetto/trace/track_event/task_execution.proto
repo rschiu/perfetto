@@ -21,8 +21,10 @@ package perfetto.protos;
 
 // TrackEvent arguments describing the execution of a task.
 message TaskExecution {
+  // CHROME_FIELD_WHITELIST_BEGIN
   // Source location that the task was posted from.
   optional uint32 posted_from_iid = 1;  // interned SourceLocation.
+  // CHROME_FIELD_WHITELIST_END
 }
 
 // --------------------
@@ -30,9 +32,11 @@ message TaskExecution {
 // --------------------
 
 message SourceLocation {
+  // CHROME_FIELD_WHITELIST_BEGIN
   optional uint32 iid = 1;
 
   // We intend to add a binary symbol version of this in the future.
   optional string file_name = 2;
   optional string function_name = 3;
+  // CHROME_FIELD_WHITELIST_END
 }

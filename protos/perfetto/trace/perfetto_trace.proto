@@ -2642,7 +2642,9 @@ message TracePacket {
     // removed field with id 5
     ClockSnapshot clock_snapshot = 6;
     SysStats sys_stats = 7;
+    // CHROME_FIELD_WHITELIST_BEGIN
     TrackEvent track_event = 11;
+    // CHROME_FIELD_WHITELIST_END
 
     // IDs up to 15 are reserved. They take only one byte to encode their
     // preamble so should be used for freqeuent events.
@@ -2656,9 +2658,11 @@ message TracePacket {
     AndroidLogPacket android_log = 39;
     SystemInfo system_info = 45;
 
+    // CHROME_FIELD_WHITELIST_BEGIN
     // Only used by TrackEvent.
     ProcessDescriptor process_descriptor = 43;
     ThreadDescriptor thread_descriptor = 44;
+    // CHROME_FIELD_WHITELIST_END
 
     // This field is emitted at periodic intervals (~10s) and
     // contains always the binary representation of the UUID
@@ -2677,6 +2681,7 @@ message TracePacket {
   // instead.
   oneof optional_trusted_uid { int32 trusted_uid = 3; };
 
+  // CHROME_FIELD_WHITELIST_BEGIN
   // Service-assigned identifier of the packet sequence this packet belongs to.
   // Uniquely identifies a producer + writer pair within the tracing session. A
   // value of zero denotes an invalid ID. Keep in sync with
@@ -2720,6 +2725,7 @@ message TracePacket {
   // with |incremental_state_cleared| set. In such a situation, the reader
   // should skip to the next packet with this flag set.
   optional bool previous_packet_dropped = 42;
+  // CHROME_FIELD_WHITELIST_END
 }
 
 // End of protos/perfetto/trace/trace_packet.proto
@@ -2784,12 +2790,15 @@ message DebugAnnotationName {
 //
 // Next id: 5.
 message ProcessDescriptor {
+  // CHROME_FIELD_WHITELIST_BEGIN
   optional int32 pid = 1;
+  // CHROME_FIELD_WHITELIST_END
   repeated string cmdline = 2;
 
   // To support old UI. New UI should determine default sorting by process_type.
   optional int32 legacy_sort_index = 3;
 
+  // CHROME_FIELD_WHITELIST_BEGIN
   // See chromium's content::ProcessType.
   enum ChromeProcessType {
     PROCESS_UNSPECIFIED = 0;
@@ -2803,6 +2812,7 @@ message ProcessDescriptor {
     PROCESS_PPAPI_BROKER = 8;
   }
   optional ChromeProcessType chrome_process_type = 4;
+  // CHROME_FIELD_WHITELIST_END
 }
 
 // End of protos/perfetto/trace/track_event/process_descriptor.proto
@@ -2811,8 +2821,10 @@ message ProcessDescriptor {
 
 // TrackEvent arguments describing the execution of a task.
 message TaskExecution {
+  // CHROME_FIELD_WHITELIST_BEGIN
   // Source location that the task was posted from.
   optional uint32 posted_from_iid = 1;  // interned SourceLocation.
+  // CHROME_FIELD_WHITELIST_END
 }
 
 // --------------------
@@ -2820,11 +2832,13 @@ message TaskExecution {
 // --------------------
 
 message SourceLocation {
+  // CHROME_FIELD_WHITELIST_BEGIN
   optional uint32 iid = 1;
 
   // We intend to add a binary symbol version of this in the future.
   optional string file_name = 2;
   optional string function_name = 3;
+  // CHROME_FIELD_WHITELIST_END
 }
 
 // End of protos/perfetto/trace/track_event/task_execution.proto
@@ -2837,26 +2851,33 @@ message SourceLocation {
 //
 // Next id: 8.
 message ThreadDescriptor {
+  // CHROME_FIELD_WHITELIST_BEGIN
   optional int32 pid = 1;
   optional int32 tid = 2;
+  // CHROME_FIELD_WHITELIST_END
 
   // To support old UI. New UI should determine default sorting by thread_type.
   optional int32 legacy_sort_index = 3;
 
+  // CHROME_FIELD_WHITELIST_BEGIN
+  // TODO(b/127698366): Add thread types here.
   enum ChromeThreadType {
     THREAD_UNSPECIFIED = 0;
     // TODO(eseckler): Add thread types.
   };
   optional ChromeThreadType thread_type = 4;
+  // CHROME_FIELD_WHITELIST_END
 
   // TODO(eseckler): Replace this with ChromeThreadType where possible.
   optional string thread_name = 5;
 
+  // CHROME_FIELD_WHITELIST_BEGIN
   // Absolute reference values. Clock values in subsequent TrackEvents can be
   // encoded accumulatively and relative to these. This reduces their var-int
   // encoding size.
   optional int64 reference_timestamp_us = 6;
   optional int64 reference_thread_time_us = 7;
+  // CHROME_FIELD_WHITELIST_END
 }
 
 // End of protos/perfetto/trace/track_event/thread_descriptor.proto
@@ -2883,6 +2904,7 @@ message ThreadDescriptor {
 // Next reserved id: 7 (up to 15).
 // Next id: 20.
 message TrackEvent {
+  // CHROME_FIELD_WHITELIST_BEGIN
   // Timestamp in microseconds (usually CLOCK_MONOTONIC).
   oneof timestamp {
     // Delta timestamp value since the last TrackEvent or ThreadDescriptor. To
@@ -2910,6 +2932,7 @@ message TrackEvent {
 
   // We intend to add a binary symbol version of this in the future.
   repeated uint32 category_iids = 3;  // interned EventCategoryName.
+  // CHROME_FIELD_WHITELIST_END
 
   // TODO(eseckler): May also want a debug_name for untyped debug-only events.
 
@@ -2917,6 +2940,7 @@ message TrackEvent {
   // for metrics use.
   repeated DebugAnnotation debug_annotations = 4;
 
+  // CHROME_FIELD_WHITELIST_BEGIN
   // Typed event arguments:
   optional TaskExecution task_execution = 5;
   // TODO(eseckler): New argument types go here :)
@@ -2942,9 +2966,12 @@ message TrackEvent {
       uint64 local_id = 10;
       uint64 global_id = 11;
     }
+    // CHROME_FIELD_WHITELIST_END
+    // TODO(ssid): This should be whitelisted, b/126390308.
     // Additional optional scope for |id|.
     optional string id_scope = 7;
 
+    // CHROME_FIELD_WHITELIST_BEGIN
     // Consider the thread timestamps for async BEGIN/END event pairs as valid.
     optional bool use_async_tts = 9;
 
@@ -2979,6 +3006,7 @@ message TrackEvent {
   }
 
   optional LegacyEvent legacy_event = 6;
+  // CHROME_FIELD_WHITELIST_END
 }
 
 // --------------------
@@ -2986,13 +3014,17 @@ message TrackEvent {
 // --------------------
 
 message EventCategory {
+  // CHROME_FIELD_WHITELIST_BEGIN
   optional uint32 iid = 1;
   optional string name = 2;
+  // CHROME_FIELD_WHITELIST_END
 }
 
 message LegacyEventName {
+  // CHROME_FIELD_WHITELIST_BEGIN
   optional uint32 iid = 1;
   optional string name = 2;
+  // CHROME_FIELD_WHITELIST_END
 }
 
 // End of protos/perfetto/trace/track_event/track_event.proto

@@ -42,6 +42,7 @@ package perfetto.protos;
 // Next reserved id: 7 (up to 15).
 // Next id: 20.
 message TrackEvent {
+  // CHROME_FIELD_WHITELIST_BEGIN
   // Timestamp in microseconds (usually CLOCK_MONOTONIC).
   oneof timestamp {
     // Delta timestamp value since the last TrackEvent or ThreadDescriptor. To
@@ -69,6 +70,7 @@ message TrackEvent {
 
   // We intend to add a binary symbol version of this in the future.
   repeated uint32 category_iids = 3;  // interned EventCategoryName.
+  // CHROME_FIELD_WHITELIST_END
 
   // TODO(eseckler): May also want a debug_name for untyped debug-only events.
 
@@ -76,6 +78,7 @@ message TrackEvent {
   // for metrics use.
   repeated DebugAnnotation debug_annotations = 4;
 
+  // CHROME_FIELD_WHITELIST_BEGIN
   // Typed event arguments:
   optional TaskExecution task_execution = 5;
   // TODO(eseckler): New argument types go here :)
@@ -101,9 +104,12 @@ message TrackEvent {
       uint64 local_id = 10;
       uint64 global_id = 11;
     }
+    // CHROME_FIELD_WHITELIST_END
+    // TODO(ssid): This should be whitelisted, b/126390308.
     // Additional optional scope for |id|.
     optional string id_scope = 7;
 
+    // CHROME_FIELD_WHITELIST_BEGIN
     // Consider the thread timestamps for async BEGIN/END event pairs as valid.
     optional bool use_async_tts = 9;
 
@@ -138,6 +144,7 @@ message TrackEvent {
   }
 
   optional LegacyEvent legacy_event = 6;
+  // CHROME_FIELD_WHITELIST_END
 }
 
 // --------------------
@@ -145,11 +152,15 @@ message TrackEvent {
 // --------------------
 
 message EventCategory {
+  // CHROME_FIELD_WHITELIST_BEGIN
   optional uint32 iid = 1;
   optional string name = 2;
+  // CHROME_FIELD_WHITELIST_END
 }
 
 message LegacyEventName {
+  // CHROME_FIELD_WHITELIST_BEGIN
   optional uint32 iid = 1;
   optional string name = 2;
+  // CHROME_FIELD_WHITELIST_END
 }

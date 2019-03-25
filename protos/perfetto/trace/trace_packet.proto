@@ -58,7 +58,9 @@ message TracePacket {
     ChromeEventBundle chrome_events = 5;
     ClockSnapshot clock_snapshot = 6;
     SysStats sys_stats = 7;
+    // CHROME_FIELD_WHITELIST_BEGIN
     TrackEvent track_event = 11;
+    // CHROME_FIELD_WHITELIST_END
 
     // IDs up to 15 are reserved. They take only one byte to encode their
     // preamble so should be used for freqeuent events.
@@ -72,9 +74,11 @@ message TracePacket {
     AndroidLogPacket android_log = 39;
     SystemInfo system_info = 45;
 
+    // CHROME_FIELD_WHITELIST_BEGIN
     // Only used by TrackEvent.
     ProcessDescriptor process_descriptor = 43;
     ThreadDescriptor thread_descriptor = 44;
+    // CHROME_FIELD_WHITELIST_END
 
     // This field is emitted at periodic intervals (~10s) and
     // contains always the binary representation of the UUID
@@ -93,6 +97,7 @@ message TracePacket {
   // instead.
   oneof optional_trusted_uid { int32 trusted_uid = 3; };
 
+  // CHROME_FIELD_WHITELIST_BEGIN
   // Service-assigned identifier of the packet sequence this packet belongs to.
   // Uniquely identifies a producer + writer pair within the tracing session. A
   // value of zero denotes an invalid ID. Keep in sync with
@@ -136,4 +141,5 @@ message TracePacket {
   // with |incremental_state_cleared| set. In such a situation, the reader
   // should skip to the next packet with this flag set.
   optional bool previous_packet_dropped = 42;
+  // CHROME_FIELD_WHITELIST_END
 }
