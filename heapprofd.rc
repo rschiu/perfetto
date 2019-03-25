@@ -17,7 +17,7 @@ service heapprofd /system/bin/heapprofd
     socket heapprofd stream 0666 root root
     user nobody
     group nobody readproc
-    writepid /dev/cpuset/system-background/tasks
+    writepid /dev/cpuset/foreground/tasks
     onrestart exec_background - nobody shell -- /system/bin/heapprofd --cleanup-after-crash
     # DAC_READ_SEARCH is denied by SELinux on user builds because the SELinux
     # permission is userdebug_or_eng only.
