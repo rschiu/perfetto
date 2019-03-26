@@ -272,6 +272,7 @@ void HeapprofdProducer::StartDataSource(DataSourceInstanceID id,
   uint32_t dump_interval = continuous_dump_config.dump_interval_ms();
   if (dump_interval) {
     auto weak_producer = weak_factory_.GetWeakPtr();
+
     task_runner_->PostDelayedTask(
         [weak_producer, id, dump_interval] {
           if (!weak_producer)
