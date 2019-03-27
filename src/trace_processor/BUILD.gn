@@ -64,6 +64,8 @@ source_set("lib") {
     "ftrace_descriptors.h",
     "ftrace_utils.cc",
     "ftrace_utils.h",
+    "fuchsia_trace_parser.cc",
+    "fuchsia_trace_parser.h",
     "instants_table.cc",
     "instants_table.h",
     "process_table.cc",

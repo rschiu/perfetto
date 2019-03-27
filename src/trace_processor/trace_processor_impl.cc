@@ -29,6 +29,7 @@
 #include "src/trace_processor/counter_definitions_table.h"
 #include "src/trace_processor/counter_values_table.h"
 #include "src/trace_processor/event_tracker.h"
+#include "src/trace_processor/fuchsia_trace_parser.h"
 #include "src/trace_processor/instants_table.h"
 #include "src/trace_processor/process_table.h"
 #include "src/trace_processor/process_tracker.h"
@@ -150,6 +151,14 @@ TraceType GuessTraceType(const uint8_t* data, size_t size) {
     return kJsonTraceType;
   if (IsPrefix("[{", start_minus_white_space))
     return kJsonTraceType;
+  // Fuchsia traces will start with a provider info metadata record,
+  // which guarantees that the low 4 bits and the high 4 bits of the first
+  // 8-byte word are both 0. Proto files should generally not have this
+  // property, as the low 3 bits being 0 would indicate a Varint, but most
+  // proto files start with a length delimited record (wire type 2).
+  if (size >= 8 && (data[0] & 0xF) == 0 && (data[7] & 0xF0) == 0) {
+    return kFuchsiaTraceType;
+  }
   return kProtoTraceType;
 }
 
@@ -214,6 +223,9 @@ bool TraceProcessorImpl::Parse(std::unique_ptr<uint8_t[]> data, size_t size) {
         break;
       case kProtoTraceType:
         context_.chunk_reader.reset(new ProtoTraceTokenizer(&context_));
+        break;
+      case kFuchsiaTraceType:
+        context_.chunk_reader.reset(new FuchsiaTraceParser(&context_));
         break;
       case kUnknownTraceType:
         return false;
