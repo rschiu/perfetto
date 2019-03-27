@@ -259,8 +259,11 @@ void UnwindingWorker::OnDataAvailable(base::UnixSocket* self) {
   // Drain buffer to clear the notification.
   char recv_buf[1024];
   self->Receive(recv_buf, sizeof(recv_buf));
+  ReadAndHandle(self->peer_pid());
+}
 
-  auto it = client_data_.find(self->peer_pid());
+void UnwindingWorker::ReadAndHandle(pid_t pid) {
+  auto it = client_data_.find(pid);
   if (it == client_data_.end()) {
     PERFETTO_DFATAL("Unexpected data.");
     return;
@@ -268,19 +271,16 @@ void UnwindingWorker::OnDataAvailable(base::UnixSocket* self) {
 
   ClientData& client_data = it->second;
   SharedRingBuffer& shmem = client_data.shmem;
-  SharedRingBuffer::Buffer buf;
 
-  for (;;) {
-    // TODO(fmayer): Allow spinlock acquisition to fail and repost Task if it
-    // did.
-    buf = shmem.BeginRead();
-    if (!buf)
-      break;
-    HandleBuffer(buf, &client_data.metadata,
-                 client_data.data_source_instance_id,
-                 client_data.sock->peer_pid(), delegate_);
-    shmem.EndRead(std::move(buf));
-  }
+  // TODO(fmayer): Allow spinlock acquisition to fail and repost Task if it
+  // did.
+  auto buf = shmem.BeginRead();
+  if (!buf)
+    return;
+  HandleBuffer(buf, &client_data.metadata, client_data.data_source_instance_id,
+               client_data.sock->peer_pid(), delegate_);
+  shmem.EndRead(std::move(buf));
+  thread_task_runner_.get()->PostTask([this, pid] { ReadAndHandle(pid); });
 }
 
 // static

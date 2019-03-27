@@ -166,6 +166,8 @@ class UnwindingWorker : public base::UnixSocket::EventListener {
 
  public:
   // static and public for testing/fuzzing
+  void ReadAndHandle(pid_t pid);
+
   static void HandleBuffer(const SharedRingBuffer::Buffer& buf,
                            UnwindingMetadata* unwinding_metadata,
                            DataSourceInstanceID data_source_instance_id,
