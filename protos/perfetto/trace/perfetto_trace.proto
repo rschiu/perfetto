@@ -2453,10 +2453,18 @@ message ProfilePacket {
   }
 
   repeated ProcessHeapSamples process_dumps = 5;
+  message Histogram {
+    message Sample {
+      optional uint64 bucket = 1;
+      optional uint64 count = 2;
+    }
+    repeated Sample samples = 1;
+  }
   message ProcessStats {
     optional uint64 unwinding_errors = 1;
     optional uint64 heap_samples = 2;
     optional uint64 map_reparses = 3;
+    optional Histogram unwinding_time_us = 4;
   }
 
   message ProcessHeapSamples {
