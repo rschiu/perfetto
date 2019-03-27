@@ -101,6 +101,7 @@ class ProtoTraceParser {
   void ParseTraceStats(ConstBytes);
   void ParseFtraceStats(ConstBytes);
   void ParseProfilePacket(ConstBytes);
+  void ParseSystemInfo(ConstBytes);
 
  private:
   TraceProcessorContext* context_;
@@ -162,9 +163,6 @@ class ProtoTraceParser {
   static constexpr size_t kMmEventCounterSize = 7;
   std::array<MmEventCounterNames, kMmEventCounterSize> mm_event_counter_names_;
 
-  // Keep this in sync with the Linux syscall count.
-  static constexpr size_t kSysNameIdSize = 13;
-  std::array<StringId, kSysNameIdSize> sys_name_ids_;
 };
 
 }  // namespace trace_processor
