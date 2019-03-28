@@ -49,4 +49,6 @@ message HeapprofdConfig {
 
   // Dump at a predefined interval.
   optional ContinuousDumpConfig continuous_dump_config = 6;
+
+  optional uint64 shmem_size = 8;
 }
