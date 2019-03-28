@@ -47,6 +47,11 @@ declare_args() {
   # The Android blueprint file generator overrides this to true.
   perfetto_build_with_android = false
 
+  # Whether the buildtools should have an empty source set. This is used where
+  # we want to generate a GN description of the project without downloading
+  # the sources.
+  perfetto_no_source_buildtools = false
+
   # Whether the ftrace producer and the service should be started
   # by the integration test or assumed to be running.
   start_daemons_for_testing = true

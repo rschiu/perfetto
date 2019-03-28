@@ -15,6 +15,37 @@
 import("//gn/standalone/libc++/libc++.gni")
 import("../gn/perfetto.gni")
 
+# Define a template for source sets which refer to buildtools targets to allow
+# empty deps to be created where
+template("buildtools_source_set") {
+  source_set(target_name) {
+    # Explicitly forward testonly and visibilty as suggested in the buildtools
+    # docs.
+    forward_variables_from(invoker,
+                           "*",
+                           [
+                             "testonly",
+                             "visibility",
+                             "sources",
+                           ])
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "visibility",
+                           ])
+
+    # Only forward sources when we want them.
+    if (!perfetto_no_source_buildtools) {
+      forward_variables_from(invoker, [ "sources" ])
+    }
+  }
+}
+
+# Prevent targets below from complaining about undefined configs variable.
+set_defaults("buildtools_source_set") {
+  configs = default_configs
+}
+
 # Used to suppress warnings coming from googletest macros expansions.
 config("test_warning_suppressions") {
   cflags = [
@@ -84,7 +115,7 @@ config("googletest_config") {
   configs = [ ":test_warning_suppressions" ]
 }
 
-source_set("gtest") {
+buildtools_source_set("gtest") {
   testonly = true
   include_dirs = [ "googletest/googletest" ]
   configs -= [ "//gn/standalone:extra_warnings" ]
@@ -95,7 +126,7 @@ source_set("gtest") {
   ]
 }
 
-source_set("gtest_main") {
+buildtools_source_set("gtest_main") {
   testonly = true
   configs -= [ "//gn/standalone:extra_warnings" ]
   configs += [ ":googletest_config" ]
@@ -104,7 +135,7 @@ source_set("gtest_main") {
   ]
 }
 
-source_set("gmock") {
+buildtools_source_set("gmock") {
   testonly = true
   include_dirs = [ "googletest/googlemock" ]
   configs -= [ "//gn/standalone:extra_warnings" ]
@@ -155,7 +186,7 @@ config("protobuf_config") {
   }
 }
 
-source_set("protobuf_lite") {
+buildtools_source_set("protobuf_lite") {
   sources = [
     "protobuf/src/google/protobuf/arena.cc",
     "protobuf/src/google/protobuf/arenastring.cc",
@@ -186,7 +217,7 @@ source_set("protobuf_lite") {
   public_configs = [ ":protobuf_gen_config" ]
 }
 
-source_set("protobuf_full") {
+buildtools_source_set("protobuf_full") {
   deps = [
     ":protobuf_lite",
   ]
@@ -251,7 +282,7 @@ source_set("protobuf_full") {
 }
 
 if (current_toolchain == host_toolchain) {
-  source_set("protoc_lib") {
+  buildtools_source_set("protoc_lib") {
     deps = [
       ":protobuf_full",
     ]
@@ -366,6 +397,9 @@ if (current_toolchain == host_toolchain) {
 }  # host_toolchain
 
 if (use_custom_libcxx) {
+  # Support a custom libcxx with empty buildtools deps doesn't make sense.
+  assert(!perfetto_empty_buildtools_deps)
+
   # Config applied to both libc++ and libc++abi targets below.
   config("libc++config") {
     defines = [
@@ -507,7 +541,7 @@ config("benchmark_config") {
   configs = [ ":test_warning_suppressions" ]
 }
 
-source_set("benchmark") {
+buildtools_source_set("benchmark") {
   testonly = true
   sources = [
     "benchmark/include/benchmark/benchmark.h",
@@ -568,7 +602,7 @@ if (is_linux || is_android) {
     ]
   }
 
-  source_set("libbacktrace") {
+  buildtools_source_set("libbacktrace") {
     sources = [
       "libbacktrace/dwarf.c",
       "libbacktrace/elf.c",
@@ -604,7 +638,7 @@ config("sqlite_config") {
   ]
 }
 
-source_set("sqlite") {
+buildtools_source_set("sqlite") {
   sources = [
     "sqlite/sqlite3.c",
     "sqlite/sqlite3.h",
@@ -615,7 +649,7 @@ source_set("sqlite") {
   public_configs = [ ":sqlite_config" ]
 }
 
-source_set("sqlite_shell") {
+buildtools_source_set("sqlite_shell") {
   testonly = true
   sources = [
     "sqlite/shell.c",
@@ -626,7 +660,7 @@ source_set("sqlite_shell") {
   ]
 }
 
-source_set("lzma") {
+buildtools_source_set("lzma") {
   defines = [ "_7ZIP_ST" ]
   sources = [
     "lzma/C/7zAlloc.c",
@@ -674,7 +708,7 @@ source_set("lzma") {
   ]
 }
 
-source_set("libunwindstack") {
+buildtools_source_set("libunwindstack") {
   include_dirs = [
     "android-core/libunwindstack/include",
     "android-core/libunwindstack",
@@ -747,7 +781,7 @@ config("jsoncpp_config") {
   ]
 }
 
-source_set("jsoncpp") {
+buildtools_source_set("jsoncpp") {
   sources = [
     "jsoncpp/src/lib_json/json_reader.cpp",
     "jsoncpp/src/lib_json/json_value.cpp",
@@ -767,7 +801,7 @@ config("linenoise_config") {
   ]
 }
 
-source_set("linenoise") {
+buildtools_source_set("linenoise") {
   sources = [
     "linenoise/linenoise.c",
     "linenoise/linenoise.h",
@@ -777,7 +811,7 @@ source_set("linenoise") {
 }
 
 if (use_libfuzzer) {
-  source_set("libfuzzer") {
+  buildtools_source_set("libfuzzer") {
     configs -= [
       "//gn/standalone:extra_warnings",
       "//gn/standalone/sanitizers:sanitizers_cflags",
