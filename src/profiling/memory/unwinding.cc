@@ -195,6 +195,7 @@ void UnwindingMetadata::ReparseMaps() {
 }
 
 bool DoUnwind(WireMessage* msg, UnwindingMetadata* metadata, AllocRecord* out) {
+  auto start_time_us = base::GetWallTimeNs() / 1000;
   AllocMetadata* alloc_metadata = msg->alloc_header;
   std::unique_ptr<unwindstack::Regs> regs(
       CreateFromRawData(alloc_metadata->arch, alloc_metadata->register_data));
@@ -250,6 +251,8 @@ bool DoUnwind(WireMessage* msg, UnwindingMetadata* metadata, AllocRecord* out) {
     out->error = true;
   }
 
+  out->unwinding_time_us = static_cast<uint64_t>(
+      ((base::GetWallTimeNs() / 1000) - start_time_us).count());
   return true;
 }
 
