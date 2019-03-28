@@ -24,4 +24,5 @@ package perfetto.protos;
 
 message ChromeConfig {
   optional string trace_config = 1;
+  optional bool output_filtering_enabled = 2;
 }
