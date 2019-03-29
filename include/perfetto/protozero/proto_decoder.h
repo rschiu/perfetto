@@ -184,8 +184,11 @@ class TypedProtoDecoderBase : public ProtoDecoder {
     // implicit initializers on all the ~1000 entries. We need it to initialize
     // only on the first |max_field_id| fields, the remaining capacity doesn't
     // require initialization.
-    static_assert(std::is_trivially_constructible<Field>::value &&
-                      std::is_trivially_destructible<Field>::value &&
+    // TODO(lalitm): is_trivially_constructible is currently not available
+    // in some environments we build in. Reenable when that environment supports
+    // this.
+    static_assert(/* std::is_trivially_constructible<Field>::value && */
+                  std::is_trivially_destructible<Field>::value &&
                       std::is_trivial<Field>::value,
                   "Field must be a trivial aggregate type");
     memset(fields_, 0, sizeof(Field) * num_fields_);
