@@ -175,7 +175,7 @@ constexpr const char* kLogFmt[] = {"\x1b[2m", "\x1b[39m", "\x1b[32m\x1b[1m",
   do {                     \
   } while (false && (x))
 
-#define PERFETTO_DFATAL(...) ::perfetto::base::ignore_result(__VA_ARGS__)
+#define PERFETTO_DFATAL(fmt, ...) PERFETTO_ELOG("DFATAL:" fmt, ##__VA_ARGS__)
 
 #endif  // PERFETTO_DCHECK_IS_ON()
 
