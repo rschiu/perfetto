@@ -61,6 +61,7 @@ constexpr char kInodeMapSourceName[] = "linux.inode_file_map";
 constexpr char kSysStatsSourceName[] = "linux.sys_stats";
 constexpr char kAndroidPowerSourceName[] = "android.power";
 constexpr char kAndroidLogSourceName[] = "android.log";
+constexpr char kPackagesListSourceName[] = "android.packages_list";
 
 }  // namespace.
 
@@ -172,6 +173,8 @@ void ProbesProducer::SetupDataSource(DataSourceInstanceID instance_id,
     data_source = CreateAndroidPowerDataSource(session_id, config);
   } else if (config.name() == kAndroidLogSourceName) {
     data_source = CreateAndroidLogDataSource(session_id, config);
+  } else if (config.name() == kPackagesListSourceName) {
+    data_source = CreatePackagesListDataSource(session_id, config);
   }
 
   if (!data_source) {
@@ -280,6 +283,14 @@ std::unique_ptr<ProbesDataSource> ProbesProducer::CreateAndroidLogDataSource(
   return std::unique_ptr<ProbesDataSource>(
       new AndroidLogDataSource(config, task_runner_, session_id,
                                endpoint_->CreateTraceWriter(buffer_id)));
+}
+
+std::unique_ptr<ProbesDataSource> ProbesProducer::CreatePackagesListDataSource(
+    TracingSessionID session_id,
+    const DataSourceConfig& config) {
+  auto buffer_id = static_cast<BufferID>(config.target_buffer());
+  return std::unique_ptr<ProbesDataSource>(new AndroidLogDataSource(
+      session_id, endpoint_->CreateTraceWriter(buffer_id)));
 }
 
 std::unique_ptr<ProbesDataSource> ProbesProducer::CreateSysStatsDataSource(

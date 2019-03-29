@@ -2647,6 +2647,7 @@ message Trace {
 // End of protos/perfetto/trace/trace.proto
 
 // Begin of protos/perfetto/trace/trace_packet.proto
+package perfetto.protos;
 
 // The root object emitted by Perfetto. A perfetto trace is just a stream of
 // TracePacket(s).
@@ -2679,6 +2680,7 @@ message TracePacket {
     PowerRails power_rails = 40;
     AndroidLogPacket android_log = 39;
     SystemInfo system_info = 45;
+    // removed field with id 46
 
     // Only used by TrackEvent.
     ProcessDescriptor process_descriptor = 43;
