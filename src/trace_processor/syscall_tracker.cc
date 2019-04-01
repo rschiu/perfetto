@@ -645,6 +645,8 @@ void SyscallTracker::SetArchitecture(Architecture arch) {
     case kUnknown:
       arch_to_generic_syscall_number = &unknown_to_syscall;
       break;
+    default:
+      PERFETTO_FATAL("For GCC");
   }
 
   for (size_t i = 0; i < kSyscallCount; i++) {
