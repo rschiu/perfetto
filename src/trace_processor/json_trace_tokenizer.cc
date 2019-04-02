@@ -125,7 +125,10 @@ bool JsonTraceTokenizer::Parse(std::unique_ptr<uint8_t[]> data, size_t size) {
 
     base::Optional<int64_t> opt_ts =
         json_trace_utils::CoerceToNs((*value)["ts"]);
-    PERFETTO_CHECK(opt_ts.has_value());
+    if (!opt_ts.has_value()) {
+      PERFETTO_ELOG("Missing ts key in json dict.");
+      return false;
+    }
     int64_t ts = opt_ts.value();
 
     trace_sorter->PushJsonValue(ts, std::move(value));
