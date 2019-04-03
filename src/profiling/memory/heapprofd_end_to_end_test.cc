@@ -38,8 +38,6 @@
 // create the sockets in a world-writable location.
 #if PERFETTO_BUILDFLAG(PERFETTO_START_DAEMONS)
 #define TEST_PRODUCER_SOCK_NAME "/data/local/tmp/traced_producer"
-#else
-#define TEST_PRODUCER_SOCK_NAME ::perfetto::GetProducerSocket()
 #endif
 
 namespace perfetto {
@@ -50,16 +48,6 @@ constexpr useconds_t kMsToUs = 1000;
 
 using ::testing::Eq;
 using ::testing::AnyOf;
-
-void WaitForHeapprofd(uint64_t timeout_ms) {
-  constexpr uint64_t kSleepMs = 10;
-  std::vector<std::string> cmdlines{"heapprofd"};
-  std::set<pid_t> pids;
-  for (size_t i = 0; i < timeout_ms / kSleepMs && pids.empty(); ++i) {
-    FindPidsForCmdlines(cmdlines, &pids);
-    usleep(kSleepMs * 1000);
-  }
-}
 
 class HeapprofdDelegate : public ThreadDelegate {
  public:
@@ -124,16 +112,6 @@ int __attribute__((unused)) SetEnableProperty(std::string* value) {
   return 0;
 }
 
-base::ScopedResource<std::string*, SetEnableProperty, nullptr>
-StartSystemHeapprofdIfRequired() {
-  base::ignore_result(TEST_PRODUCER_SOCK_NAME);
-  std::string prev_property_value = ReadProperty(kEnableHeapprofdProperty, "0");
-  __system_property_set(kEnableHeapprofdProperty, "1");
-  WaitForHeapprofd(5000);
-  return base::ScopedResource<std::string*, SetEnableProperty, nullptr>(
-      new std::string(prev_property_value));
-}
-
 constexpr size_t kStartupAllocSize = 10;
 
 void AllocateAndFree(size_t bytes) {
@@ -195,7 +173,6 @@ class HeapprofdEndToEnd : public ::testing::Test {
     // and then set to 1 again too quickly, init decides that the service is
     // "restarting" and waits before restarting it.
     usleep(50000);
-    unset_property = StartSystemHeapprofdIfRequired();
   }
 
  protected:
@@ -308,8 +285,6 @@ class HeapprofdEndToEnd : public ::testing::Test {
   TaskRunnerThread producer_thread("perfetto.prd");
   producer_thread.Start(std::unique_ptr<HeapprofdDelegate>(
       new HeapprofdDelegate(TEST_PRODUCER_SOCK_NAME)));
-#else
-  base::ScopedResource<std::string*, SetEnableProperty, nullptr> unset_property;
 #endif
 
   void Smoke() {
