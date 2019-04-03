@@ -18,6 +18,7 @@
 #include <malloc.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -114,14 +115,26 @@ std::atomic<const MallocDispatch*> g_dispatch{nullptr};
 // This shared_ptr itself is protected by g_client_lock. Note that shared_ptr
 // handles are not thread-safe by themselves:
 // https://en.cppreference.com/w/cpp/memory/shared_ptr/atomic
+//
+// Warning: since shared_ptr uses heap allocations, care needs to be taken
+// around its (and its copies') destruction, as that will destroy and then free
+// the Client and the control block. This presents a possibility of us
+// re-entering the hooked free while:
+// * the g_client is in indeterminate state (but appears to be valid), and
+// * the pointed-at Client has been destroyed and therefore invalid.
+//
+// In addition to the typical destruction of the Client as part of tearing down
+// a profiling session, there is also the special case of this global's static
+// destructor running within the atexit handlers (possibly concurrently with
+// other threads using these hooks).
+//
+// Similarly, care needs to be taken around the spinlock in the on-destruction
+// re-entrancy into heapprofd_free. While the two problems are similar, they
+// require separate considerations.
 std::shared_ptr<perfetto::profiling::Client> g_client;
 
 // Protects g_client, and serves as an external lock for sampling decisions (see
 // perfetto::profiling::Sampler).
-//
-// TODO(rsavitski): consider lifting Sampler into this global scope. Nesting
-// under client is not necessary (though it does highlight that their validity
-// is tied together).
 std::atomic<bool> g_client_lock{false};
 
 constexpr char kHeapprofdBinPath[] = "/system/bin/heapprofd";
@@ -130,6 +143,14 @@ const MallocDispatch* GetDispatch() {
   return g_dispatch.load(std::memory_order_relaxed);
 }
 
+// Warning: see g_client's comment on the subtleties of re-entrancy during the
+// destruction of the last shared_ptr pointing at the client.
+//
+// At the time of writing, this is called only from hooks that already hold a
+// copy of the g_client, which means that the release() is never the last
+// decrementer of the refcount - so it will never run the client's destruction
+// (which would be a problem as it is holding the spinlock).
+//
 // Note: android_mallopt(M_RESET_HOOKS) is mutually exclusive with initialize
 // (concurrent calls get discarded).
 void ShutdownLazy() {
@@ -137,11 +158,19 @@ void ShutdownLazy() {
   if (!g_client)  // other invocation already initiated shutdown
     return;
 
-  // Clear primary shared pointer, such that later hook invocations become nops.
-  g_client.reset();
-
   if (!android_mallopt(M_RESET_HOOKS, nullptr, 0))
     PERFETTO_PLOG("Unpatching heapprofd hooks failed.");
+
+  // Clear primary shared pointer, such that later hook invocations become nops.
+  //
+  // Note that once we unlock, we allow for heapprofd_initalize to create a new
+  // client, with its lifetime possibly overlapping the current client's, which
+  // is being kept alive by the already-acquired shared_ptr copies. This means
+  // that we cannot rely on the hooks being unpatched at the time the destructor
+  // of the last shared_ptr for this client runs (which will call free), as the
+  // reinitialization will repatch the hooks. However, in practice this
+  // overlapping is extremely unlikely.
+  g_client.reset();
 }
 
 std::string ReadSystemProperty(const char* key) {
@@ -266,6 +295,22 @@ std::shared_ptr<perfetto::profiling::Client> CreateClientAndPrivateDaemon() {
 
 }  // namespace
 
+// Installed as an atexit(3) handler in initialize. Exists primarily to avoid
+// the g_client's static destructor issues (see b/129749217). Will be invoked
+// before the g_client's destructor as the handler is installed after the
+// g_client's static constructor has completed.
+void CleanUpAtProcessExit() {
+  PERFETTO_DLOG("Entering atexit handler.");
+
+  ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Blocking);
+
+  // Best effort attempt to avoid re-entrancy on destruction altogether.
+  if (!android_mallopt(M_RESET_HOOKS, nullptr, 0))
+    PERFETTO_DLOG("Unpatching heapprofd hooks at exit failed.");
+
+  g_client.reset();
+}
+
 // Setup for the rest of profiling. The first time profiling is triggered in a
 // process, this is called after this client library is dlopened, but before the
 // rest of the hooks are patched in. However, as we support multiple profiling
@@ -276,11 +321,25 @@ std::shared_ptr<perfetto::profiling::Client> CreateClientAndPrivateDaemon() {
 // Note: if profiling is triggered at runtime, this runs on a dedicated pthread
 // (which is safe to block). If profiling is triggered at startup, then this
 // code runs synchronously.
+//
+// If returning false and this is the first time the initialize is being called
+// (after the dlopen), bionic will dlclose the library.
 bool HEAPPROFD_ADD_PREFIX(_initialize)(const MallocDispatch* malloc_dispatch,
                                        int*,
                                        const char*) {
-  // Table of pointers to backing implementation.
-  g_dispatch.store(malloc_dispatch, std::memory_order_relaxed);
+  // If we don't have the real malloc dispatch table, this is the first time
+  // initialize is called.
+  if (!GetDispatch()) {
+    g_dispatch.store(malloc_dispatch, std::memory_order_relaxed);
+
+    // Install our own atexit handler to avoid issues with the global
+    // destructors.
+    if (atexit(&CleanUpAtProcessExit)) {  // returns 0 on success
+      PERFETTO_ELOG("Failed to install atexit handler.");
+      PERFETTO_DFATAL("Failed to install atexit handler.");
+      return false;
+    }
+  }
 
   ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Blocking);
 
@@ -303,10 +362,10 @@ bool HEAPPROFD_ADD_PREFIX(_initialize)(const MallocDispatch* malloc_dispatch,
   return true;
 }
 
-void HEAPPROFD_ADD_PREFIX(_finalize)() {
-  // At the time of writing, invoked only as an atexit handler. We don't have
-  // any specific action to take, and cleanup can be left to the OS.
-}
+// At the time of writing, invoked only as an atexit handler, installed by
+// bionic. We rely on our own handler (see heapprofd_initialize) instead, as
+// that gives a more direct guarantee of the handler being invoked.
+void HEAPPROFD_ADD_PREFIX(_finalize)() {}
 
 // Decides whether an allocation with the given address and size needs to be
 // sampled, and if so, records it. Performs the necessary synchronization (holds
