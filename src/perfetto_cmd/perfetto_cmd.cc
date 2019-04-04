@@ -129,7 +129,7 @@ using protozero::proto_utils::WriteVarInt;
 using protozero::proto_utils::MakeTagLengthDelimited;
 
 int PerfettoCmd::PrintUsage(const char* argv0) {
-  PERFETTO_ELOG(R"(
+  fprintf(stderr, R"(
 Usage: %s
   --background     -d     : Exits immediately and continues tracing in background
   --config         -c     : /path/to/trace/config/file or - for stdin
@@ -160,8 +160,7 @@ Detach mode. DISCOURAGED, read https://docs.perfetto.dev/#/detached-mode :
   --detach=key          : Detach from the tracing session with the given key.
   --attach=key [--stop] : Re-attach to the session (optionally stop tracing once reattached).
   --is_detached=key     : Check if the session can be re-attached (0:Yes, 2:No, 1:Error).
-)",
-                argv0);
+)", argv0);
   return 1;
 }
 
@@ -283,7 +282,7 @@ int PerfettoCmd::Main(int argc, char** argv) {
       dropbox_tag_ = optarg;
       continue;
 #else
-      PERFETTO_ELOG("DropBox is only supported with Android tree builds");
+      fprintf(stderr, "DropBox is only supported with Android tree builds\n");
       return 1;
 #endif
     }
@@ -363,17 +362,17 @@ int PerfettoCmd::Main(int argc, char** argv) {
   }
 
   if (is_detach() && is_attach()) {
-    PERFETTO_ELOG("--attach and --detach are mutually exclusive");
+    fprintf(stderr, "--attach and --detach are mutually exclusive\n");
     return 1;
   }
 
   if (is_detach() && background) {
-    PERFETTO_ELOG("--detach and --background are mutually exclusive");
+    fprintf(stderr, "--detach and --background are mutually exclusive\n");
     return 1;
   }
 
   if (stop_trace_once_attached_ && !is_attach()) {
-    PERFETTO_ELOG("--stop is supported only in combination with --attach");
+    fprintf(stderr, "--stop is supported only in combination with --attach\n");
     return 1;
   }
 
@@ -387,20 +386,20 @@ int PerfettoCmd::Main(int argc, char** argv) {
   bool parsed = false;
   if (is_attach()) {
     if ((!trace_config_raw.empty() || has_config_options)) {
-      PERFETTO_ELOG("Cannot specify a trace config with --attach");
+      fprintf(stderr, "Cannot specify a trace config with --attach\n");
       return 1;
     }
   } else if (has_config_options) {
     if (!trace_config_raw.empty()) {
-      PERFETTO_ELOG(
-          "Cannot specify both -c/--config and any of --time, --size, "
-          "--buffer, --app, ATRACE_CAT, FTRACE_EVENT");
+      fprintf(stderr,
+              "Cannot specify both -c/--config and any of --time, --size, "
+              "--buffer, --app, ATRACE_CAT, FTRACE_EVENT\n");
       return 1;
     }
     parsed = CreateConfigFromOptions(config_options, &trace_config_proto);
   } else {
     if (trace_config_raw.empty()) {
-      PERFETTO_ELOG("The TraceConfig is empty");
+      fprintf(stderr, "The TraceConfig is empty\n");
       return 1;
     }
 
@@ -419,7 +418,7 @@ int PerfettoCmd::Main(int argc, char** argv) {
     trace_config_->FromProto(trace_config_proto);
     trace_config_raw.clear();
   } else if (!is_attach()) {
-    PERFETTO_ELOG("The trace config is invalid, bailing out.");
+    fprintf(stderr, "The trace config is invalid, bailing out.\n");
     return 1;
   }
 
@@ -427,9 +426,9 @@ int PerfettoCmd::Main(int argc, char** argv) {
   // only exception of --attach. In this case the output file is passed when
   // detaching.
   if (!trace_out_path_.empty() && !dropbox_tag_.empty()) {
-    PERFETTO_ELOG(
-        "Can't log to a file (--out) and DropBox (--dropbox) at the same "
-        "time");
+    fprintf(stderr,
+            "Can't log to a file (--out) and DropBox (--dropbox) at the same "
+            "time\n");
     return 1;
   }
 
@@ -437,18 +436,18 @@ int PerfettoCmd::Main(int argc, char** argv) {
   if (is_attach()) {
     open_out_file = false;
     if (!trace_out_path_.empty() || !dropbox_tag_.empty()) {
-      PERFETTO_ELOG("Can't pass an --out file (or --dropbox) to --attach");
+      fprintf(stderr, "Can't pass an --out file (or --dropbox) to --attach\n");
       return 1;
     }
   } else if (trace_out_path_.empty() && dropbox_tag_.empty()) {
-    PERFETTO_ELOG("Either --out or --dropbox is required");
+    fprintf(stderr, "Either --out or --dropbox is required\n");
     return 1;
   } else if (is_detach() && !trace_config_->write_into_file()) {
     // In detached mode we must pass the file descriptor to the service and
     // let that one write the trace. We cannot use the IPC readback code path
     // because the client process is about to exit soon after detaching.
-    PERFETTO_ELOG(
-        "TraceConfig's write_into_file must be true when using --detach");
+    fprintf(stderr,
+            "TraceConfig's write_into_file must be true when using --detach\n");
     return 1;
   }
   if (open_out_file && !OpenOutputFile())
