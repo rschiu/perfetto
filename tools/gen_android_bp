@@ -212,6 +212,7 @@ class Module(object):
         self.include_dirs = []
         self.required = []
         self.user_debug_flag = False
+        self.text = None
 
     def to_string(self, output):
         if self.comment:
@@ -247,6 +248,8 @@ class Module(object):
                 output.append('      cflags: ["-DPERFETTO_BUILD_WITH_ANDROID_USERDEBUG"],')
                 output.append('    },')
             output.append('  },')
+        if self.text:
+          output.append(self.text)
         output.append('}')
         output.append('')
 
@@ -622,6 +625,13 @@ def create_blueprint_for_targets(desc, targets):
         '-Oz',
     ]
     defaults.user_debug_flag = True
+    defaults.text = """  target: {
+      android: {
+          lto: {
+               thin: true,
+          },
+      },
+  },"""
 
     blueprint.add_module(defaults)
     for target in targets:
