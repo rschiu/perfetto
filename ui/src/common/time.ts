@@ -50,7 +50,7 @@ export function timeToCode(sec: number) {
       result += i.toLocaleString() + unit + ' ';
     }
   });
-  return result;
+  return result.slice(0, -1);
 }
 
 export class TimeSpan {
