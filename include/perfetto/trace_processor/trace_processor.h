@@ -29,6 +29,7 @@ namespace perfetto {
 namespace protos {
 class RawQueryArgs;
 class RawQueryResult;
+class TraceMetrics;
 }  // namespace protos
 
 namespace trace_processor {
@@ -105,6 +106,12 @@ class TraceProcessor {
   // Executes a SQLite query on the loaded portion of the trace. The returned
   // iterator can be used to load rows from the result.
   virtual Iterator ExecuteQuery(base::StringView sql) = 0;
+
+  // Computes a given metric on the loded portion of the trace. The result
+  // will be written to the |metrics| proto if no error occurred. The return
+  // value will be 0 if no error occured or non-zero otherwise.
+  virtual int ComputeMetric(base::StringView metric_name,
+                            protos::TraceMetrics* metrics) = 0;
 
   // Interrupts the current query. Typically used by Ctrl-C handler.
   virtual void InterruptQuery() = 0;

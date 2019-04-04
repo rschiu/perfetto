@@ -206,9 +206,12 @@ int ExportTraceToDatabase(const std::string& output_name) {
 int RunMetrics(const std::vector<std::string>& metric_names) {
   protos::TraceMetrics metrics_proto;
   for (const auto& metric : metric_names) {
-    perfetto::base::ignore_result(metric);
+    int res = g_tp->ComputeMetric(base::StringView(metric), &metrics_proto);
+    if (res) {
+      PERFETTO_ELOG("Error when computing metric %s", metric.c_str());
+      return 1;
+    }
   }
-  perfetto::base::ignore_result(metrics_proto);
   return 0;
 }
 

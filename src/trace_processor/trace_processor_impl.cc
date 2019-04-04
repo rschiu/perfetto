@@ -50,6 +50,7 @@
 #include "src/trace_processor/trace_sorter.h"
 #include "src/trace_processor/window_operator_table.h"
 
+#include "perfetto/metrics/metrics.pb.h"
 #include "perfetto/trace_processor/raw_query.pb.h"
 
 // JSON parsing is only supported in the standalone build.
@@ -375,6 +376,12 @@ void TraceProcessorImpl::InterruptQuery() {
     return;
   query_interrupted_.store(true);
   sqlite3_interrupt(db_.get());
+}
+
+int TraceProcessorImpl::ComputeMetric(base::StringView metric_name,
+                                      protos::TraceMetrics* metrics) {
+  perfetto::base::ignore_result(metric_name, metrics);
+  return 0;
 }
 
 TraceProcessor::IteratorImpl::IteratorImpl(TraceProcessorImpl* trace_processor,

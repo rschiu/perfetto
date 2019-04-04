@@ -64,6 +64,9 @@ class TraceProcessorImpl : public TraceProcessor {
 
   Iterator ExecuteQuery(base::StringView sql) override;
 
+  int ComputeMetric(base::StringView metric_name,
+                    protos::TraceMetrics* metrics) override;
+
   void InterruptQuery() override;
 
  private:

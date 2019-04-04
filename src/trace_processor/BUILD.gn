@@ -146,6 +146,9 @@ source_set("lib") {
     "../base",
     "../protozero",
 
+    # This is a legitimate lite dependency.
+    "../../protos/perfetto/metrics:lite",
+
     # TODO(primiano): remove this one dep and move to a ":zero" dep.
     "../../protos/perfetto/trace_processor:lite",
   ]
@@ -170,7 +173,6 @@ if (current_toolchain == host_toolchain) {
     deps = [
       ":lib",
       "../../gn:default_deps",
-      "../../protos/perfetto/metrics:lite",
       "../../protos/perfetto/trace_processor:lite",
       "../base",
     ]
