@@ -105,6 +105,10 @@ SharedRingBuffer::~SharedRingBuffer() {
 void SharedRingBuffer::Initialize(base::ScopedFile mem_fd) {
 #if PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)
   int seals = fcntl(*mem_fd, F_GET_SEALS);
+  if (seals == -1) {
+    PERFETTO_ELOG("Failed to get seals of FD.");
+    return;
+  }
   if ((seals & kFDSeals) != kFDSeals) {
     PERFETTO_ELOG("FD not properly sealed. Expected %x, got %x", kFDSeals,
                   seals);
