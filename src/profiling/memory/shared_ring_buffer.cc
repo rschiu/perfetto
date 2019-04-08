@@ -176,7 +176,9 @@ SharedRingBuffer::Buffer SharedRingBuffer::BeginWrite(
 
   const uint64_t size_with_header =
       base::AlignUp<kAlignment>(size + kHeaderSize);
-  if (size_with_header > write_avail(pos)) {
+  // size_with_header < size is for catching overflow of size_with_header.
+  if (size_with_header > write_avail(pos) ||
+      PERFETTO_UNLIKELY(size_with_header < size)) {
     meta_->stats.num_writes_overflow++;
     errno = EAGAIN;
     return result;
