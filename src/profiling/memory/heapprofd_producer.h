@@ -116,6 +116,9 @@ class HeapprofdProducer : public Producer, public UnwindingWorker::Delegate {
                         std::string target_cmdline,
                         base::ScopedFile inherited_socket);
 
+  void ConnectEndpoint(
+      std::unique_ptr<TracingService::ProducerEndpoint> endpoint);
+
  private:
   void HandleClientConnection(std::unique_ptr<base::UnixSocket> new_connection,
                               Process process);
@@ -127,7 +130,7 @@ class HeapprofdProducer : public Producer, public UnwindingWorker::Delegate {
     kConnecting,
     kConnected,
   };
-  void Connect();
+  void ConnectService();
   void Restart();
   void ResetConnectionBackoff();
   void IncreaseConnectionBackoff();
