@@ -197,6 +197,8 @@ std::shared_ptr<Client> Client::CreateAndHandshake(
     return nullptr;
   }
 
+  sock.SetBlocking(false);
+
   PERFETTO_DCHECK(client_config.interval >= 1);
   Sampler sampler{client_config.interval};
   // note: the shared_ptr will retain a copy of the unhooked_allocator
@@ -272,7 +274,9 @@ bool Client::RecordMalloc(uint64_t alloc_size,
     PERFETTO_PLOG("Failed to write to shared ring buffer (RecordMalloc).");
     return false;
   }
-  if (sock_.Send(kSingleByte, sizeof(kSingleByte)) == -1) {
+  PERFETTO_DCHECK(!sock_.IsBlocking());
+  if (sock_.Send(kSingleByte, sizeof(kSingleByte)) == -1 && errno != EAGAIN &&
+      errno != EWOULDBLOCK) {
     PERFETTO_PLOG("Failed to send control socket byte.");
     return false;
   }
@@ -312,6 +316,18 @@ bool Client::FlushFreesLocked() {
     return false;
   }
   return true;
+}
+
+bool Client::IsConnected() {
+  PERFETTO_DCHECK(!sock_.IsBlocking());
+  char buf[1];
+  ssize_t recv_bytes =
+      PERFETTO_EINTR(sock_.Receive(buf, sizeof(buf), nullptr, 0));
+  if (recv_bytes == 0)
+    return false;
+  else if (recv_bytes > 0)
+    return true;
+  return errno == EAGAIN || errno == EWOULDBLOCK;
 }
 
 }  // namespace profiling

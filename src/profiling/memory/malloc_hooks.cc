@@ -302,7 +302,8 @@ bool HEAPPROFD_ADD_PREFIX(_initialize)(const MallocDispatch* malloc_dispatch,
 
   ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Blocking);
 
-  if (g_client.ref()) {
+  // Only reject concurrent session if the previous one is still active.
+  if (g_client.ref() && g_client.ref()->IsConnected()) {
     PERFETTO_LOG("Rejecting concurrent profiling initialization.");
     return true;  // success as we're in a valid state
   }
