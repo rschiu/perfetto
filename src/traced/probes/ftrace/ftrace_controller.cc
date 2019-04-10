@@ -300,6 +300,7 @@ void FtraceController::StartIfNeeded() {
 
   {
     std::lock_guard<std::mutex> lock(thread_sync_.mutex);
+    thread_sync_.cpus_to_drain.reset();
     thread_sync_.cmd = FtraceThreadSync::kRun;
     thread_sync_.cmd_id++;
   }
