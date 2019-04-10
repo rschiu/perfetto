@@ -246,12 +246,21 @@ void UnwindingWorker::OnDisconnect(base::UnixSocket* self) {
     return;
   }
   ClientData& client_data = it->second;
+  SharedRingBuffer& shmem = client_data.shmem;
+  SharedRingBuffer::Stats stats = {};
+  {
+    auto lock = shmem.AcquireLock(ScopedSpinlock::Mode::Try);
+    if (lock.locked())
+      stats = shmem.GetStats(lock);
+    else
+      PERFETTO_ELOG("Failed to log shmem to get stats.");
+  }
   DataSourceInstanceID ds_id = client_data.data_source_instance_id;
   pid_t peer_pid = self->peer_pid();
   client_data_.erase(it);
   // The erase invalidates the self pointer.
   self = nullptr;
-  delegate_->PostSocketDisconnected(ds_id, peer_pid);
+  delegate_->PostSocketDisconnected(ds_id, peer_pid, std::move(stats));
 }
 
 void UnwindingWorker::OnDataAvailable(base::UnixSocket* self) {
