@@ -31,28 +31,19 @@ namespace trace_processor {
 class ProcessTable : public Table {
  public:
   enum Column { kUpid = 0, kName = 1, kPid = 2, kStartTs = 3 };
-
-  static void RegisterTable(sqlite3* db, const TraceStorage* storage);
-
-  ProcessTable(sqlite3*, const TraceStorage*);
-
-  // Table implementation.
-  base::Optional<Table::Schema> Init(int, const char* const*) override;
-  std::unique_ptr<Table::Cursor> CreateCursor(const QueryConstraints&,
-                                              sqlite3_value**) override;
-  int BestIndex(const QueryConstraints&, BestIndexInfo*) override;
-
- private:
   class Cursor : public Table::Cursor {
    public:
-    Cursor(const TraceStorage*, const QueryConstraints&, sqlite3_value**);
+    Cursor(ProcessTable*);
 
     // Implementation of Table::Cursor.
+    int Filter(const QueryConstraints&, sqlite3_value**) override;
     int Next() override;
     int Eof() override;
     int Column(sqlite3_context*, int N) override;
 
    private:
+    friend class ProcessTable;
+
     const TraceStorage* const storage_;
     UniquePid min;
     UniquePid max;
@@ -60,6 +51,16 @@ class ProcessTable : public Table {
     bool desc;
   };
 
+  static void RegisterTable(sqlite3* db, const TraceStorage* storage);
+
+  ProcessTable(sqlite3*, const TraceStorage*);
+
+  // Table implementation.
+  base::Optional<Table::Schema> Init(int, const char* const*) override;
+  std::unique_ptr<Table::Cursor> CreateCursor() override;
+  int BestIndex(const QueryConstraints&, BestIndexInfo*) override;
+
+ private:
   const TraceStorage* const storage_;
 };
 }  // namespace trace_processor
