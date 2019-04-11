@@ -252,9 +252,21 @@ std::shared_ptr<perfetto::profiling::Client> CreateClientAndPrivateDaemon(
   pid_t target_pid = getpid();
   std::string target_cmdline;
   if (!perfetto::profiling::GetCmdlineForPID(target_pid, &target_cmdline)) {
-    PERFETTO_ELOG("Failed to read own cmdline.");
-    return nullptr;
+    target_cmdline = "failed-to-read-cmdline";
+    PERFETTO_ELOG(
+        "Failed to read own cmdline, proceeding as this might be a by-pid "
+        "profiling request (which will still work).");
   }
+
+  // Prepare arguments.
+  std::string pid_arg =
+      std::string("--exclusive-for-pid=") + std::to_string(target_pid);
+  std::string cmd_arg =
+      std::string("--exclusive-for-cmdline=") + target_cmdline;
+  std::string fd_arg =
+      std::string("--inherit-socket-fd=") + std::to_string(child_sock.fd());
+  const char* argv[] = {kHeapprofdBinPath, pid_arg.c_str(), cmd_arg.c_str(),
+                        fd_arg.c_str(), nullptr};
 
   pid_t clone_pid = CloneWithoutSigchld();
   if (clone_pid == -1) {
@@ -269,15 +281,6 @@ std::shared_ptr<perfetto::profiling::Client> CreateClientAndPrivateDaemon(
       PERFETTO_PLOG("Daemonization failed.");
       _exit(1);
     }
-    std::string pid_arg =
-        std::string("--exclusive-for-pid=") + std::to_string(target_pid);
-    std::string cmd_arg =
-        std::string("--exclusive-for-cmdline=") + target_cmdline;
-    std::string fd_arg =
-        std::string("--inherit-socket-fd=") + std::to_string(child_sock.fd());
-    const char* argv[] = {kHeapprofdBinPath, pid_arg.c_str(), cmd_arg.c_str(),
-                          fd_arg.c_str(), nullptr};
-
     execv(kHeapprofdBinPath, const_cast<char**>(argv));
     PERFETTO_PLOG("Failed to execute private heapprofd.");
     _exit(1);
@@ -308,7 +311,8 @@ std::shared_ptr<perfetto::profiling::Client> CreateClientAndPrivateDaemon(
 }
 
 // Note: android_mallopt(M_RESET_HOOKS) is mutually exclusive with initialize
-// (concurrent calls get discarded).
+// (concurrent calls get discarded). So technically the unpatching could fail if
+// there is a concurrent re-initialization running due to a new signal.
 void ShutdownLazy() {
   ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Blocking);
   if (!g_client.ref())  // other invocation already initiated shutdown
