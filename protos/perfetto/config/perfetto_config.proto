@@ -258,6 +258,7 @@ message DataSourceConfig {
   optional HeapprofdConfig heapprofd_config = 105;
   optional AndroidPowerConfig android_power_config = 106;
   optional AndroidLogConfig android_log_config = 107;
+  optional GpuConfig gpu_config = 108;
 
   // This is a fallback mechanism to send a free-form text config to the
   // producer. In theory this should never be needed. All the code that
@@ -794,3 +795,14 @@ message HeapprofdConfig {
 }
 
 // End of protos/perfetto/config/profiling/heapprofd_config.proto
+
+// Begin of protos/perfetto/config/gpu/gpu_config.proto
+
+// When editing this file run ./tools/gen_tracing_cpp_headers_from_protos.py
+// to reflect changes in the corresponding C++ headers.
+
+message GpuConfig {
+}
+
+
+// End of protos/perfetto/config/gpu/gpu_config.proto

@@ -21,6 +21,7 @@
 
 #include <array>
 #include <memory>
+#include <unordered_map>
 
 #include "perfetto/base/string_view.h"
 #include "perfetto/protozero/field.h"
@@ -114,6 +115,7 @@ class ProtoTraceParser : public TraceParser {
                        int64_t tts,
                        ProtoIncrementalState::PacketSequenceState*,
                        ConstBytes);
+  void ParseGpuStats(int64_t ts, ConstBytes);
 
  private:
   TraceProcessorContext* context_;
@@ -144,6 +146,7 @@ class ProtoTraceParser : public TraceParser {
   const StringId oom_score_adj_id_;
   const StringId ion_total_unknown_id_;
   const StringId ion_change_unknown_id_;
+  std::vector<StringId> gpu_counter_strs_id_;
   std::vector<StringId> meminfo_strs_id_;
   std::vector<StringId> vmstat_strs_id_;
   std::vector<StringId> rss_members_;
@@ -175,6 +178,15 @@ class ProtoTraceParser : public TraceParser {
   // Keep kMmEventCounterSize equal to mm_event_type::MM_TYPE_NUM in the kernel.
   static constexpr size_t kMmEventCounterSize = 7;
   std::array<MmEventCounterNames, kMmEventCounterSize> mm_event_counter_names_;
+
+  struct GpuCounterData {
+    GpuCounterData() = default;
+    GpuCounterData(StringId _str_id, int64_t _value)
+        : str_id(_str_id), value(_value) {}
+    StringId str_id = 0;
+    int64_t value = 0;
+  };
+  std::unordered_map<uint32_t, GpuCounterData> gpu_counter_data_;
 
 };
 

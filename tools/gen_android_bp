@@ -48,6 +48,7 @@ default_targets = [
     '//:heapprofd_client',
     '//:heapprofd',
     '//:trigger_perfetto',
+    '//:gpu_traced_probes',
 ]
 
 # Defines a custom init_rc argument to be applied to the corresponding output

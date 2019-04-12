@@ -205,6 +205,20 @@ if (perfetto_build_standalone || perfetto_build_with_android) {
     ]
   }
 
+  # The unprivileged daemon that is allowed to access tracefs (for ftrace).
+  # Registers as a Producer on the traced daemon.
+  executable("gpu_traced_probes") {
+    deps = [
+      ":libperfetto",
+      "gn:default_deps",
+      "include/perfetto/traced",
+      "src/traced/gpu_counter_probe",
+    ]
+    sources = [
+      "src/traced/gpu_counter_probe/main.cc",
+    ]
+  }
+
   # The command line client for Perfetto. Allows to configure / start / stop
   # tracing, acting as a Consumer.
   executable("perfetto") {

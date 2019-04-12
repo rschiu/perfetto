@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include <string>
+#include <sstream>
 
 #include "perfetto/base/logging.h"
 #include "perfetto/base/optional.h"
@@ -55,6 +56,7 @@
 #include "perfetto/trace/ftrace/signal.pbzero.h"
 #include "perfetto/trace/ftrace/task.pbzero.h"
 #include "perfetto/trace/interned_data/interned_data.pbzero.h"
+#include "perfetto/trace/gpu/gpu_stats.pbzero.h"
 #include "perfetto/trace/power/battery_counters.pbzero.h"
 #include "perfetto/trace/power/power_rails.pbzero.h"
 #include "perfetto/trace/profiling/profile_packet.pbzero.h"
@@ -327,6 +329,9 @@ void ProtoTraceParser::ParseTracePacket(
     ParseTrackEvent(ts, ttp.thread_timestamp, ttp.packet_sequence_state,
                     packet.track_event());
   }
+
+  if (packet.has_gpu_stats())
+    ParseGpuStats(ts, packet.gpu_stats());
 
   // TODO(lalitm): maybe move this to the flush method in the trace processor
   // once we have it. This may reduce performance in the ArgsTracker though so
@@ -1552,6 +1557,30 @@ void ProtoTraceParser::ParseTrackEvent(
         procs->UpdateProcess(pid, base::nullopt, process_name);
       }
       break;
+    }
+  }
+}
+
+void ProtoTraceParser::ParseGpuStats(int64_t ts, ConstBytes blob) {
+  protos::pbzero::GpuStats::Decoder packet(blob.data, blob.size);
+
+  for (auto it = packet.counters(); it; ++it) {
+    protos::pbzero::GpuStats::GpuCounter::Decoder counter(it->data(), it->size());
+    if (counter.has_counter_id() && counter.has_value()) {
+      auto counter_id = counter.counter_id();
+      auto value = counter.value();
+      if (gpu_counter_data_.find(counter_id) != gpu_counter_data_.end()) {
+        struct GpuCounterData& data = gpu_counter_data_[counter_id];
+        context_->event_tracker->PushCounter(
+            ts, value - data.value, data.str_id, 0, RefType::kRefNoRef);
+        data.value = value;
+      } else {
+        std::ostringstream oss;
+        oss << "gpu.counter(" << counter_id << ")";
+        gpu_counter_data_.emplace(
+            counter_id,
+            GpuCounterData(context_->storage->InternString(oss.str().c_str()), value));
+      }
     }
   }
 }

@@ -1,0 +1,56 @@
+See https://perfetto.dev/#/build-instructions.md:
+
+tools/install-build-deps [--ui]
+
+Standalone checkout:
+If you are a chromium developer and have depot_tools installed you can avoid the tools/ prefix below and just use gn/ninja from depot_tools.
+
+$ tools/gn args out/android to generate build files and enter in the editor:
+
+target_os = "android"                 # Only when building for Android
+target_cpu = "arm" / "arm64" / "x64"  # Only when building for Android
+is_debug = true / false
+
+$ tools/ninja -C out/android
+
+
+
+Build and run gpu counter producer:
+-----------------------------------
+$ tools/ninja -C out/android gpu_traced_probes
+$ adb push out/android/gpu_traced_probes /data/local/tmp/
+$ adb shell /data/local/tmp/gpu_traced_probes
+
+To start trace:
+---------------
+$ adb shell perfetto   -c - --txt   -o /data/misc/perfetto-traces/trace <<EOF
+
+buffers: {
+    size_kb: 8960
+    fill_policy: DISCARD
+}
+buffers: {
+    size_kb: 1280
+    fill_policy: DISCARD
+}
+data_sources: {
+    config {
+        name: "android.gpu"
+    }
+}
+duration_ms: 10000
+
+EOF
+
+Retrieve the trace file: 
+$ adb pull /data/misc/perfetto-traces/trace 
+
+View in Perfetto UI
+-------------------
+To build the UI (remember to run tools/install-build-deps --ui first):
+$ tools/ninja -C out/android ui
+
+To run UI in browser:
+$ ./ui/run-dev-server out/android/
+
+Click "Open trace file" to view the trace.
