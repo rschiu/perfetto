@@ -22,6 +22,11 @@
 #include <sys/system_properties.h>
 #endif
 
+namespace {
+// If renaming the property, also update malloc_hooks.cc
+const char kDebugModePropName[] = "heapprofd.userdebug.mode";
+}  // namespace
+
 namespace perfetto {
 namespace profiling {
 
@@ -93,15 +98,18 @@ SystemProperties::Handle SystemProperties::SetAll() {
 #endif
 
 // static
-void SystemProperties::ResetProperties() {
+void SystemProperties::ResetHeapprofdProperties() {
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
   int r = __system_property_foreach(
       [](const prop_info* pi, void*) {
         __system_property_read_callback(
             pi,
             [](void*, const char* name, const char*, uint32_t) {
-              const char* found = strstr(name, "heapprofd");
-              if (found == name) {
+              // Unset everything starting with "heapprofd.", except for the
+              // property stating which mode to use on debug builds.
+              const char* found = strstr(name, "heapprofd.");
+              if (found == name && strncmp(name, kDebugModePropName,
+                                           strlen(kDebugModePropName))) {
                 int ret = __system_property_set(name, "");
                 PERFETTO_DCHECK(ret == 0);
               }
@@ -111,7 +119,7 @@ void SystemProperties::ResetProperties() {
       nullptr);
   PERFETTO_DCHECK(r == 0);
 #else
-  PERFETTO_DFATAL("Cannot ResetProperties on out-of-tree builds.");
+  PERFETTO_DFATAL("Cannot ResetHeapprofdProperties on out-of-tree builds.");
 #endif
 }
 

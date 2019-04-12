@@ -212,6 +212,7 @@ bool ShouldForkPrivateDaemon() {
   // On development builds, we support both modes of profiling, depending on a
   // system property.
   if (build_type == "userdebug" || build_type == "eng") {
+    // Note: if renaming the property, also update system_property.cc
     std::string mode = ReadSystemProperty("heapprofd.userdebug.mode");
     return mode == "fork";
   }
