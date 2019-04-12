@@ -77,12 +77,6 @@ class PerfettoTest : public ::testing::Test {
 class PerfettoCmdlineTest : public ::testing::Test {
  public:
   void SetUp() override {
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
-    // On android P perfetto shell only has permission to write traces to this
-    // directory. So we update TMPDIR to this so that our client will have
-    // permissions.
-    setenv("TMPDIR", "/data/misc/perfetto-traces", 1);
-#endif
     test_helper_.StartServiceIfRequired();
   }
 
@@ -133,9 +127,6 @@ class PerfettoCmdlineTest : public ::testing::Test {
              1);
       _exit(PerfettoCmdMain(static_cast<int>(argv.size() - 1), argv.data()));
 #else
-      // We have to choose a location that the perfetto binary will have
-      // permission to write to. This does not include /data/local/tmp so
-      // instead we override TMPDIR to the trace directory.
       execv("/system/bin/perfetto", &argv[0]);
       _exit(3);
 #endif
