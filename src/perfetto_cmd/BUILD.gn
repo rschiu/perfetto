@@ -38,6 +38,7 @@ source_set("perfetto_cmd") {
     "perfetto_config.descriptor.h",
     "rate_limiter.cc",
     "rate_limiter.h",
+    "trigger_perfetto.cc",
     "trigger_producer.cc",
     "trigger_producer.h",
   ]

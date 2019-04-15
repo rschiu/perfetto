@@ -328,12 +328,13 @@ bool TracingServiceImpl::EnableTracing(ConsumerEndpointImpl* consumer,
 
   if (has_trigger_config && cfg.duration_ms() != 0) {
     PERFETTO_ELOG(
-        "duration_ms was set, this field is ignored for traces with triggers.");
+        "duration_ms was set, this must not be set for traces with triggers.");
     return false;
   }
 
   std::unordered_set<std::string> triggers;
   for (const auto& trigger : cfg.trigger_config().triggers()) {
+    PERFETTO_ELOG("add trigger: %s", trigger.name().c_str());
     if (!triggers.insert(trigger.name()).second) {
       PERFETTO_ELOG("Duplicate trigger name: %s", trigger.name().c_str());
       return false;
@@ -947,7 +948,7 @@ void TracingServiceImpl::ActivateTriggers(
               iter->stop_delay_ms());
           break;
         case TraceConfig::TriggerConfig::UNSPECIFIED:
-          // There are no triggers in this session move onto the next.
+          PERFETTO_ELOG("Trigger activated but trigger mode unspecified.");
           break;
       }
     }
