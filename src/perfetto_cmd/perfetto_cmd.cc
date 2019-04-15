@@ -692,6 +692,14 @@ bool PerfettoCmd::OpenOutputFile() {
   } else {
     fd = base::OpenFile(trace_out_path_, O_RDWR | O_CREAT | O_TRUNC, 0600);
   }
+  if (!fd) {
+    PERFETTO_PLOG(
+        "Failed to open %s. If you get permission denied in "
+        "/data/misc/perfetto-traces, the file might have been "
+        "created by the user, try deleting it.",
+        trace_out_path_.c_str());
+    exit(1);
+  }
   trace_out_stream_.reset(fdopen(fd.release(), "wb"));
   PERFETTO_CHECK(trace_out_stream_);
   return true;
