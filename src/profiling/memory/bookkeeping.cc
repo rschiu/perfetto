@@ -196,7 +196,10 @@ std::vector<Interned<Frame>> GlobalCallstackTrie::BuildCallstack(
 GlobalCallstackTrie::Node* GlobalCallstackTrie::CreateCallsite(
     const std::vector<FrameData>& callstack) {
   Node* node = &root_;
-  for (const FrameData& loc : callstack) {
+  // libunwindstack gives the frames top-first, but we want to bookkeep and
+  // emit as bottom first.
+  for (auto it = callstack.crbegin(); it != callstack.crend(); ++it) {
+    const FrameData& loc = *it;
     node = node->GetOrCreateChild(InternCodeLocation(loc));
   }
   return node;

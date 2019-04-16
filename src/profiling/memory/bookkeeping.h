@@ -194,9 +194,7 @@ struct DumpState {
   DumpState(TraceWriter* tw, uint64_t* ni) : trace_writer(tw), next_index(ni) {
     last_written = trace_writer->written();
 
-    current_trace_packet = trace_writer->NewTracePacket();
-    current_profile_packet = current_trace_packet->set_profile_packet();
-    current_profile_packet->set_index((*next_index)++);
+    CreateNewTracePacket();
   }
 
   void WriteMap(const Interned<Mapping> map);
@@ -224,8 +222,13 @@ struct DumpState {
     last_written = trace_writer->written();
 
     current_trace_packet->Finalize();
+    CreateNewTracePacket();
+  }
+
+  void CreateNewTracePacket() {
     current_trace_packet = trace_writer->NewTracePacket();
     current_profile_packet = current_trace_packet->set_profile_packet();
+    current_profile_packet->set_not_inverted(true);
     current_profile_packet->set_index((*next_index)++);
   }
 

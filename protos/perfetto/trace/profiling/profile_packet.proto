@@ -121,4 +121,12 @@ message ProfilePacket {
 
   optional bool continued = 6;
   optional uint64 index = 7;
+
+  // There was a bug in earlier builds of heapprofd that the frames in this
+  // proto were emitted in the opposite order (topmost first).
+  // This field is set for builds that emit the frames in the correct (bottom
+  // first) order.
+  //
+  // Unless you have to support these versions, disregard this field.
+  optional bool not_inverted = 8;
 }

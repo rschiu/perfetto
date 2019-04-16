@@ -104,8 +104,13 @@ void DumpProfilePacket(std::vector<ProfilePacket>& packet_fragments,
     for (const ProfilePacket::Callstack& callstack : packet.callstacks()) {
       std::vector<uint64_t> frame_ids(
           static_cast<size_t>(callstack.frame_ids().size()));
-      std::reverse_copy(callstack.frame_ids().cbegin(),
-                        callstack.frame_ids().cend(), frame_ids.begin());
+      if (packet.not_inverted()) {
+        std::copy(callstack.frame_ids().cbegin(), callstack.frame_ids().cend(),
+                  frame_ids.begin());
+      } else {
+        std::reverse_copy(callstack.frame_ids().cbegin(),
+                          callstack.frame_ids().cend(), frame_ids.begin());
+      }
       callstack_lookup.emplace(callstack.id(), std::move(frame_ids));
     }
   }
