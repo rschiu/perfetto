@@ -2533,8 +2533,8 @@ void TracingServiceImpl::ProducerEndpointImpl::StopDataSource(
   });
 }
 
-SharedMemoryArbiterImpl*
-TracingServiceImpl::ProducerEndpointImpl::GetShmemArbiter() {
+SharedMemoryArbiter*
+TracingServiceImpl::ProducerEndpointImpl::GetInProcessShmemArbiter() {
   PERFETTO_CHECK(inproc_shmem_arbiter_);
   return inproc_shmem_arbiter_.get();
 }
@@ -2550,13 +2550,13 @@ TracingServiceImpl::ProducerEndpointImpl::CreateTraceWriter(BufferID buf_id) {
   }
 
   PERFETTO_DCHECK(in_process_);
-  return GetShmemArbiter()->CreateTraceWriter(buf_id);
+  return GetInProcessShmemArbiter()->CreateTraceWriter(buf_id);
 }
 
 void TracingServiceImpl::ProducerEndpointImpl::NotifyFlushComplete(
     FlushRequestID id) {
   PERFETTO_DCHECK_THREAD(thread_checker_);
-  return GetShmemArbiter()->NotifyFlushComplete(id);
+  return GetInProcessShmemArbiter()->NotifyFlushComplete(id);
 }
 
 void TracingServiceImpl::ProducerEndpointImpl::OnTracingSetup() {
