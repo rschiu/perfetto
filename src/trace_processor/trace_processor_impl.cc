@@ -21,7 +21,9 @@
 #include <functional>
 
 #include "perfetto/base/logging.h"
+#include "perfetto/base/string_splitter.h"
 #include "perfetto/base/time.h"
+#include "perfetto/protozero/scattered_heap_buffer.h"
 #include "src/trace_processor/android_logs_table.h"
 #include "src/trace_processor/args_table.h"
 #include "src/trace_processor/args_tracker.h"
@@ -30,6 +32,7 @@
 #include "src/trace_processor/counter_values_table.h"
 #include "src/trace_processor/event_tracker.h"
 #include "src/trace_processor/instants_table.h"
+#include "src/trace_processor/metrics/sql_metrics.h"
 #include "src/trace_processor/process_table.h"
 #include "src/trace_processor/process_tracker.h"
 #include "src/trace_processor/proto_trace_parser.h"
@@ -49,6 +52,9 @@
 #include "src/trace_processor/trace_blob_view.h"
 #include "src/trace_processor/trace_sorter.h"
 #include "src/trace_processor/window_operator_table.h"
+
+#include "perfetto/metrics/android/mem_metric.pbzero.h"
+#include "perfetto/metrics/metrics.pbzero.h"
 
 // JSON parsing is only supported in the standalone build.
 #if PERFETTO_BUILDFLAG(PERFETTO_STANDALONE_BUILD)
@@ -278,7 +284,55 @@ void TraceProcessorImpl::InterruptQuery() {
 int TraceProcessorImpl::ComputeMetric(
     const std::vector<std::string>& metric_names,
     std::vector<uint8_t>* metrics_proto) {
-  perfetto::base::ignore_result(metric_names, metrics_proto);
+  if (metric_names.size() != 1 || metric_names[0] != "android.mem") {
+    PERFETTO_ELOG("Only android.mem metric is currently supported");
+    return 1;
+  }
+
+  const char* query_start = metrics::kAndroidMem;
+  const char* end = query_start + strlen(metrics::kAndroidMem);
+  for (const char* cur = query_start; cur < end; cur++) {
+    if (cur + 1 != end && (cur[0] != '\n' || cur[1] != '\n'))
+      continue;
+
+    std::string query(query_start, static_cast<size_t>(cur - query_start));
+    auto prep_it = ExecuteQuery(query);
+    auto prep_has_next = prep_it.Next();
+    if (auto opt_error = prep_it.GetLastError()) {
+      PERFETTO_ELOG("SQLite error: %s", opt_error->c_str());
+      return 1;
+    }
+    PERFETTO_DCHECK(!prep_has_next);
+
+    cur += 2;
+    query_start = cur;
+  }
+
+  protozero::ScatteredHeapBuffer delegate;
+  protozero::ScatteredStreamWriter writer(&delegate);
+  delegate.set_writer(&writer);
+
+  protos::pbzero::TraceMetrics metrics;
+  metrics.Reset(&writer);
+
+  auto it = ExecuteQuery("SELECT COUNT(*) from lmk_by_score;");
+  auto has_next = it.Next();
+  if (auto opt_error = it.GetLastError()) {
+    PERFETTO_ELOG("SQLite error: %s", opt_error->c_str());
+    return 1;
+  }
+  PERFETTO_CHECK(has_next);
+  PERFETTO_CHECK(it.Get(0).type == SqlValue::Type::kLong);
+
+  auto* memory = metrics.set_android_mem();
+  memory->set_system_metrics()->set_lmks()->set_total_count(
+      static_cast<int32_t>(it.Get(0).long_value));
+
+  *metrics_proto = delegate.StitchSlices();
+
+  has_next = it.Next();
+  PERFETTO_DCHECK(!has_next);
+
   return 0;
 }
 

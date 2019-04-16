@@ -64,3 +64,13 @@ java_library_host {
     "protos/perfetto/config/perfetto_config.proto",
   ],
 }
+
+genrule(
+    name = "merged_sql_metrics",
+    srcs = glob("src/trace_processor/metrics/**.sql"),
+    outs = ["src/trace_processor/metrics/sql_metrics.h"],
+    cmd = "$(location tools/gen_merged_sql_metrics) --cpp_out=$(out) $(in)",
+    tool_files = [
+      "tools/gen_merged_sql_metrics"
+    ]
+)

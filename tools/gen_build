@@ -457,13 +457,16 @@ class BuildGenerator(object):
 
       self.apply_module_sources_to_target(target, dep_desc)
     elif dep_desc['type'] == 'action':
-      (proto_target, cc_target) = self.create_target(dep_name)
-      if target.type == 'proto_library':
-        dep_target_name = proto_target.name
+      if "gen_merged_sql_metrics" in dep_name:
+        target.deps.add(Label("//third_party/perfetto:merged_sql_metrics"))
       else:
-        dep_target_name = cc_target.name
-      target.deps.add(
-          Label("//third_party/perfetto/protos:" + dep_target_name))
+        (proto_target, cc_target) = self.create_target(dep_name)
+        if target.type == 'proto_library':
+          dep_target_name = proto_target.name
+        else:
+          dep_target_name = cc_target.name
+        target.deps.add(
+            Label("//third_party/perfetto/protos:" + dep_target_name))
     elif dep_desc['type'] == 'static_library':
       dep_target = self.create_target(dep_name)
       target.deps.add(Label("//third_party/perfetto:" + dep_target.name))

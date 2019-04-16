@@ -11,3 +11,20 @@ gensignature(
         ":trace_to_text",
     ],
 )
+
+py_binary(
+    name = "gen_merged_sql_metrics"
+    srcs = [
+      "tools/gen_merged_sql_metrics"
+    ]
+)
+
+genrule(
+    name = "merged_sql_metrics",
+    srcs = glob("src/trace_processor/metrics/**.sql"),
+    outs = ["src/trace_processor/metrics/sql_metrics.h"],
+    cmd = "$(location gen_merged_sql_metrics) --cpp_out=\"$@\" $SRCS",
+    tools = [
+      "gen_merged_sql_metrics"
+    ]
+)
