@@ -20,6 +20,7 @@
 #include <map>
 #include <set>
 
+#include "src/traced/probes/ftrace/atrace_hal_wrapper.h"
 #include "src/traced/probes/ftrace/ftrace_config.h"
 #include "src/traced/probes/ftrace/ftrace_controller.h"
 #include "src/traced/probes/ftrace/ftrace_procfs.h"
@@ -88,6 +89,7 @@ class FtraceConfigMuxer {
     std::set<std::string> atrace_apps;
     bool tracing_on = false;
     bool atrace_on = false;
+    bool atrace_hal_on = false;
     size_t cpu_buffer_size_pages = 0;
   };
 
@@ -98,6 +100,14 @@ class FtraceConfigMuxer {
   void SetupBufferSize(const FtraceConfig& request);
   void UpdateAtrace(const FtraceConfig& request);
   void DisableAtrace();
+
+  void InitAtraceHalDescriptionIfNeeded();
+  const std::set<std::string>& GetAtraceHalCategories();
+  const std::vector<GroupAndName>& GetEventsForAtraceHalCategory(
+      const std::string&);
+  bool RequiresAtraceHal(const FtraceConfig& request);
+  void UpdateAtraceHal(const FtraceConfig& request);
+  void DisableAtraceHal();
 
   // This processes the config to get the exact events.
   // group/* -> Will read the fs and add all events in group.
@@ -126,6 +136,11 @@ class FtraceConfigMuxer {
   // Subset of |configs_| that are currently active. At any time ftrace is
   // enabled iff |active_configs_| is not empty.
   std::set<FtraceConfigId> active_configs_;
+
+  bool has_atrace_hal_description_ = false;
+  std::set<std::string> atrace_hal_categories_;
+  std::map<std::string, std::vector<GroupAndName>>
+      atrace_hal_category_to_events_;
 };
 
 size_t ComputeCpuBufferSizeInPages(size_t requested_buffer_size_kb);

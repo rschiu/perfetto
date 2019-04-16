@@ -23,6 +23,7 @@
 
 #include <algorithm>
 
+#include "perfetto/base/string_utils.h"
 #include "perfetto/base/utils.h"
 #include "src/traced/probes/ftrace/atrace_wrapper.h"
 
@@ -103,11 +104,17 @@ std::set<GroupAndName> FtraceConfigMuxer::GetFtraceEvents(
     // categories manually server side but this is user friendly and reduces the
     // size of the configs.
     for (const std::string& category : request.atrace_categories()) {
-      if (category == "gfx") {
-        AddEventGroup(table, "mdss", &events);
-        AddEventGroup(table, "sde", &events);
-        continue;
+      // Add Atrace HAL events if any:
+      for (const GroupAndName& group_and_name :
+           GetEventsForAtraceHalCategory(category)) {
+        events.insert(group_and_name);
       }
+
+      // if (category == "gfx") {
+      //  AddEventGroup(table, "mdss", &events);
+      //  AddEventGroup(table, "sde", &events);
+      //  continue;
+      //}
 
       if (category == "sched") {
         events.insert(GroupAndName(category, "sched_switch"));
@@ -303,6 +310,9 @@ FtraceConfigId FtraceConfigMuxer::SetupConfig(const FtraceConfig& request) {
   if (RequiresAtrace(request))
     UpdateAtrace(request);
 
+  if (RequiresAtraceHal(request))
+    UpdateAtraceHal(request);
+
   for (const auto& group_and_name : events) {
     const Event* event = table_->GetOrCreateEvent(group_and_name);
     if (!event) {
@@ -394,6 +404,12 @@ bool FtraceConfigMuxer::RemoveConfig(FtraceConfigId config_id) {
     ftrace_->SetCpuBufferSizeInPages(0);
     ftrace_->DisableAllEvents();
     ftrace_->ClearTrace();
+    // Disabling atrace hal here is a little paranoid, in theory disabling
+    // tracing should be sufficient however if AtraceDevice.cpp is customized
+    // to have additional side effects (other than toggling ftrace categories)
+    // this ensures those are reversed.
+    if (current_state_.atrace_hal_on)
+      DisableAtraceHal();
     if (current_state_.atrace_on)
       DisableAtrace();
   }
@@ -469,6 +485,96 @@ void FtraceConfigMuxer::DisableAtrace() {
     current_state_.atrace_on = false;
 
   PERFETTO_DLOG("...done");
+}
+
+void FtraceConfigMuxer::InitAtraceHalDescriptionIfNeeded() {
+  if (has_atrace_hal_description_)
+    return;
+  has_atrace_hal_description_ = true;
+  AtraceHalWrapper atrace_hal;
+  std::vector<AtraceHalWrapper::TracingVendorCategory> categories =
+      atrace_hal.GetAvailableCategories();
+
+  // Each valid path is in one of the following forms:
+  // /sys/kernel/debug/tracing/events/GROUP/enable
+  // /sys/kernel/debug/tracing/events/GROUP/NAME/enable
+  const char* kEventPathPrefix = "/sys/kernel/debug/tracing/events/";
+  const char* kEventPathSuffix = "/enable";
+  const size_t kEventPathPrefixLen = strlen(kEventPathPrefix);
+  const size_t kEventPathSuffixLen = strlen(kEventPathSuffix);
+
+  for (const auto& cat : categories) {
+    atrace_hal_categories_.insert(cat.name);
+    std::vector<GroupAndName> events;
+    for (const std::string& path : cat.paths) {
+      if (!base::StartsWith(path, kEventPathPrefix))
+        continue;
+      if (!base::EndsWith(path, kEventPathSuffix))
+        continue;
+
+      std::string event_name =
+          path.substr(kEventPathPrefixLen,
+                      path.size() - kEventPathSuffixLen - kEventPathPrefixLen);
+
+      size_t slash_count =
+          std::count(event_name.begin(), event_name.end(), '/');
+      if (slash_count > 1)
+        continue;
+
+      // event_name should now be either "GORUP/NAME" or "GROUP"
+
+      if (slash_count) {
+        std::string group;
+        std::string name;
+        std::tie(group, name) = EventToStringGroupAndName(event_name);
+        events.push_back(GroupAndName(group, name));
+      } else {
+        for (const GroupAndName& event :
+             ReadEventsInGroupFromFs(*ftrace_, event_name)) {
+          events.push_back(event);
+        }
+      }
+    }
+    atrace_hal_category_to_events_.emplace(cat.name, events);
+  }
+}
+
+const std::set<std::string>& FtraceConfigMuxer::GetAtraceHalCategories() {
+  InitAtraceHalDescriptionIfNeeded();
+  return atrace_hal_categories_;
+}
+
+const std::vector<GroupAndName>&
+FtraceConfigMuxer::GetEventsForAtraceHalCategory(const std::string& category) {
+  InitAtraceHalDescriptionIfNeeded();
+  return atrace_hal_category_to_events_[category];
+}
+
+bool FtraceConfigMuxer::RequiresAtraceHal(const FtraceConfig& request) {
+  std::set<std::string> hal_categories = GetAtraceHalCategories();
+  for (const std::string& category : request.atrace_categories()) {
+    if (hal_categories.count(category))
+      return true;
+  }
+  return false;
+}
+
+void FtraceConfigMuxer::UpdateAtraceHal(const FtraceConfig& request) {
+  AtraceHalWrapper atrace_hal;
+  std::set<std::string> hal_categories = GetAtraceHalCategories();
+  std::vector<std::string> categories;
+  for (const std::string& category : request.atrace_categories()) {
+    if (hal_categories.count(category))
+      categories.push_back(category);
+  }
+  if (atrace_hal.EnableCategories(categories))
+    current_state_.atrace_hal_on = true;
+}
+
+void FtraceConfigMuxer::DisableAtraceHal() {
+  AtraceHalWrapper atrace_hal;
+  if (atrace_hal.DisableAllCategories())
+    current_state_.atrace_hal_on = false;
 }
 
 }  // namespace perfetto

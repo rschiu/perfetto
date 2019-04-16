@@ -18,6 +18,7 @@
 
 #include <android/hardware/atrace/1.0/IAtraceDevice.h>
 #include <iostream>
+#include <vector>
 
 namespace perfetto {
 namespace android_internal {
@@ -25,6 +26,7 @@ namespace android_internal {
 using android::hardware::atrace::V1_0::IAtraceDevice;
 using android::hardware::atrace::V1_0::TracingCategory;
 using android::hardware::hidl_vec;
+using android::hardware::hidl_string;
 using android::hardware::Return;
 
 namespace {
@@ -57,10 +59,34 @@ bool GetCategories(TracingVendorCategory* categories, size_t* size_of_arr) {
               sizeof(result.description));
       result.name[sizeof(result.name) - 1] = '\0';
       result.description[sizeof(result.description) - 1] = '\0';
+      for (int j = 0; j < cat.paths.size(); ++j) {
+        strncpy(result.paths[j], cat.paths[j].c_str(), sizeof(result.paths[0]));
+        result.paths[j][sizeof(result.paths[0]) - 1] = '\0';
+      }
     }
   };
 
   g_atraceHal->listCategories(category_cb);
+  return true;
+}
+
+bool EnableCategories(size_t num_categories, const char** raw_categories) {
+  if (!GetService())
+    return false;
+  std::vector<hidl_string> categories;
+  categories.resize(num_categories);
+  for (size_t i = 0; i < num_categories; ++i)
+    categories[i] = raw_categories[i];
+  hidl_vec<hidl_string> hidl_categories(categories);
+  g_atraceHal->enableCategories(hidl_categories);
+  return true;
+}
+
+bool DisableAllCategories() {
+  if (!GetService())
+    return false;
+
+  g_atraceHal->disableAllCategories();
   return true;
 }
 

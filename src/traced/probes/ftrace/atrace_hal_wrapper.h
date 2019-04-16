@@ -36,9 +36,14 @@ class AtraceHalWrapper {
 
     // A longer description of the category.
     std::string description;
+
+    // Paths of the events of enabled by this category.
+    std::vector<std::string> paths;
   };
 
   std::vector<TracingVendorCategory> GetAvailableCategories();
+  bool EnableCategories(const std::vector<std::string>& categories);
+  bool DisableAllCategories();
 
  private:
   struct DynamicLibLoader;

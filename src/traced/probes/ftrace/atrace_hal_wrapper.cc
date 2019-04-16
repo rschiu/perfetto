@@ -35,12 +35,31 @@ struct AtraceHalWrapper::DynamicLibLoader {
       PERFETTO_PLOG("dlopen(%s) failed", kLibName);
       return;
     }
-    void* fn = dlsym(*handle_, "GetCategories");
-    if (!fn) {
+
+    void* fn_get_categories = dlsym(*handle_, "GetCategories");
+    if (!fn_get_categories) {
       PERFETTO_PLOG("dlsym(GetCategories) failed");
       return;
     }
-    get_categories_ = reinterpret_cast<decltype(get_categories_)>(fn);
+    get_categories_ =
+        reinterpret_cast<decltype(get_categories_)>(fn_get_categories);
+
+    void* fn_enable_categories = dlsym(*handle_, "EnableCategories");
+    if (!fn_enable_categories) {
+      PERFETTO_PLOG("dlsym(EnableCategories) failed");
+      return;
+    }
+    enable_categories_ =
+        reinterpret_cast<decltype(enable_categories_)>(fn_enable_categories);
+
+    void* fn_disable_all_categories = dlsym(*handle_, "DisableAllCategories");
+    if (!fn_disable_all_categories) {
+      PERFETTO_PLOG("dlsym(DisableAllCategories) failed");
+      return;
+    }
+    disable_all_categories_ =
+        reinterpret_cast<decltype(disable_all_categories_)>(
+            fn_disable_all_categories);
   }
 
   std::vector<android_internal::TracingVendorCategory> GetCategories() {
@@ -55,8 +74,27 @@ struct AtraceHalWrapper::DynamicLibLoader {
     return categories;
   }
 
+  bool EnableCategories(const std::vector<std::string>& categories) {
+    if (!enable_categories_)
+      return false;
+    std::vector<const char*> categories_raw;
+    categories_raw.resize(categories.size());
+    for (size_t i = 0; i < categories.size(); ++i)
+      categories_raw[i] = categories[i].data();
+    return enable_categories_(categories_raw.size(), categories_raw.data());
+  }
+
+  bool DisableAllCategories() {
+    if (!disable_all_categories_)
+      return false;
+    return disable_all_categories_();
+  }
+
  private:
   decltype(&android_internal::GetCategories) get_categories_ = nullptr;
+  decltype(&android_internal::EnableCategories) enable_categories_ = nullptr;
+  decltype(&android_internal::DisableAllCategories) disable_all_categories_ =
+      nullptr;
   ScopedDlHandle handle_;
 };
 
@@ -70,13 +108,28 @@ std::vector<AtraceHalWrapper::TracingVendorCategory>
 AtraceHalWrapper::GetAvailableCategories() {
   auto details = lib_->GetCategories();
   std::vector<AtraceHalWrapper::TracingVendorCategory> result;
-  for (size_t i = 0; i < details.size(); i++) {
+  for (size_t i = 0; i < details.size(); ++i) {
     AtraceHalWrapper::TracingVendorCategory cat;
     cat.name = details[i].name;
     cat.description = details[i].description;
+    for (size_t j = 0; j < base::ArraySize(details[i].paths); ++j) {
+      const char* path = details[i].paths[j];
+      if (path[0] == '\0')
+        break;
+      cat.paths.push_back(path);
+    }
     result.emplace_back(cat);
   }
   return result;
+}
+
+bool AtraceHalWrapper::EnableCategories(
+    const std::vector<std::string>& categories) {
+  return lib_->EnableCategories(categories);
+}
+
+bool AtraceHalWrapper::DisableAllCategories() {
+  return lib_->DisableAllCategories();
 }
 
 }  // namespace perfetto

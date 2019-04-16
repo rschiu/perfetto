@@ -35,6 +35,9 @@ struct TracingVendorCategory {
 
   // A longer description of the category.
   char description[256];
+
+  // Paths of the events.
+  char paths[64][128];
 };
 
 extern "C" {
@@ -43,6 +46,11 @@ extern "C" {
 
 bool __attribute__((visibility("default")))
 GetCategories(TracingVendorCategory*, size_t* size_of_arr);
+
+bool __attribute__((visibility("default")))
+EnableCategories(size_t num_categories, const char** categories);
+
+bool __attribute__((visibility("default"))) DisableAllCategories();
 
 }  // extern "C"
 
