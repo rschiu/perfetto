@@ -59,7 +59,8 @@ bool TraceConfig::operator==(const TraceConfig& other) const {
          (disable_clock_snapshotting_ == other.disable_clock_snapshotting_) &&
          (notify_traceur_ == other.notify_traceur_) &&
          (trigger_config_ == other.trigger_config_) &&
-         (activate_triggers_ == other.activate_triggers_);
+         (activate_triggers_ == other.activate_triggers_) &&
+         (can_trace_user_build_ == other.can_trace_user_build_);
 }
 #pragma GCC diagnostic pop
 
@@ -155,6 +156,12 @@ void TraceConfig::FromProto(const perfetto::protos::TraceConfig& proto) {
     activate_triggers_.back() =
         static_cast<decltype(activate_triggers_)::value_type>(field);
   }
+
+  static_assert(
+      sizeof(can_trace_user_build_) == sizeof(proto.can_trace_user_build()),
+      "size mismatch");
+  can_trace_user_build_ = static_cast<decltype(can_trace_user_build_)>(
+      proto.can_trace_user_build());
   unknown_fields_ = proto.unknown_fields();
 }
 
@@ -251,6 +258,13 @@ void TraceConfig::ToProto(perfetto::protos::TraceConfig* proto) const {
     static_assert(sizeof(it) == sizeof(proto->activate_triggers(0)),
                   "size mismatch");
   }
+
+  static_assert(
+      sizeof(can_trace_user_build_) == sizeof(proto->can_trace_user_build()),
+      "size mismatch");
+  proto->set_can_trace_user_build(
+      static_cast<decltype(proto->can_trace_user_build())>(
+          can_trace_user_build_));
   *(proto->mutable_unknown_fields()) = unknown_fields_;
 }
 

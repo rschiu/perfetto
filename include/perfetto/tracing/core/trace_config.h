@@ -471,6 +471,9 @@ class PERFETTO_EXPORT TraceConfig {
     return &activate_triggers_.back();
   }
 
+  bool can_trace_user_build() const { return can_trace_user_build_; }
+  void set_can_trace_user_build(bool value) { can_trace_user_build_ = value; }
+
  private:
   std::vector<BufferConfig> buffers_;
   std::vector<DataSource> data_sources_;
@@ -490,6 +493,7 @@ class PERFETTO_EXPORT TraceConfig {
   bool notify_traceur_ = {};
   TriggerConfig trigger_config_ = {};
   std::vector<std::string> activate_triggers_;
+  bool can_trace_user_build_ = {};
 
   // Allows to preserve unknown protobuf fields for compatibility
   // with future versions of .proto files.

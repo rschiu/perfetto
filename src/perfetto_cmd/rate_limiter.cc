@@ -26,6 +26,10 @@
 #include "perfetto/base/utils.h"
 #include "src/perfetto_cmd/perfetto_cmd.h"
 
+#if PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)
+#include <sys/system_properties.h>
+#endif  // PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)
+
 namespace perfetto {
 namespace {
 
@@ -37,6 +41,19 @@ const uint64_t kMaxUploadResetPeriodInSeconds = 60 * 60 * 24;
 
 // Maximum of 10mb every 24h.
 const uint64_t kMaxUploadInBytes = 1024 * 1024 * 10;
+
+bool IsUserBuild() {
+#if PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)
+  char value[PROP_VALUE_MAX];
+  if (__system_property_get("ro.build.type", value) != 0) {
+    PERFETTO_ELOG("Unable to read ro.build.type: assuming user build");
+    return true;
+  }
+  return strcmp(value, "user") == 0;
+#else
+  return false;
+#endif  // PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)
+}
 
 }  // namespace
 
@@ -50,6 +67,14 @@ bool RateLimiter::ShouldTrace(const Args& args) {
   // -> We can just trace.
   if (!args.is_dropbox)
     return true;
+
+  // If we're tracing a user build we should only trace if the override in
+  // the config is set:
+  bool is_user_build = IsUserBuild();
+  if (is_user_build && !args.can_trace_user_build) {
+    PERFETTO_ELOG("Guardrail: User build but can_trace_user_build not set");
+    return false;
+  }
 
   // The state file is gone.
   // Maybe we're tracing for the first time or maybe something went wrong the

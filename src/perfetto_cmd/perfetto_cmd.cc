@@ -531,6 +531,7 @@ int PerfettoCmd::Main(int argc, char** argv) {
   args.is_dropbox = !dropbox_tag_.empty();
   args.current_time = base::GetWallTimeS();
   args.ignore_guardrails = ignore_guardrails;
+  args.can_trace_user_build = trace_config_->can_trace_user_build();
 #if PERFETTO_BUILDFLAG(PERFETTO_ANDROID_USERDEBUG_BUILD) || \
     PERFETTO_BUILDFLAG(PERFETTO_STANDALONE_BUILD)
   args.max_upload_bytes_override =
