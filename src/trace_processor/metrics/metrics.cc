@@ -60,6 +60,46 @@ int ComputeMetrics(TraceProcessorImpl* tp,
     return 1;
   }
 
+  struct Context {
+    TraceProcessorImpl* tp;
+  };
+  auto fn = [](sqlite3_context* ctx, int argc, sqlite3_value** argv) {
+    auto* context = static_cast<Context*>(sqlite3_user_data(ctx));
+    if (argc == 0 || sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+      sqlite3_result_error(ctx, "Invalid call to RUN_METRIC", -1);
+      return;
+    }
+
+    const char* filename =
+        reinterpret_cast<const char*>(sqlite3_value_text(argv[0]));
+    for (const auto& filename_to_sql : sql_metrics::kFileToSql) {
+      if (strcmp(filename_to_sql.filename, filename) != 0)
+        continue;
+
+      // TODO(lalitm): implement substituition here.
+      auto queries = SplitString(filename_to_sql.sql, ";\n\n");
+      for (const auto& query : queries) {
+        PERFETTO_DLOG("Executing query in RUN_METRIC: %s", query.c_str());
+        auto it = context->tp->ExecuteQuery(query);
+        if (it.Next()) {
+          sqlite3_result_error(ctx, "RUN_METRIC function produced output", -1);
+        } else if (auto opt_error = it.GetLastError()) {
+          sqlite3_result_error(
+              ctx, "Running file specified by RUN_METRIC errored", -1);
+        }
+      }
+      return;
+    }
+    sqlite3_result_error(ctx, "Unknown filename provided to RUN_METRIC", -1);
+  };
+  std::unique_ptr<Context> ctx(new Context());
+  ctx->tp = tp;
+  auto ret = tp->RegisterScalarFunction("RUN_METRIC", -1, std::move(ctx), fn);
+  if (ret) {
+    PERFETTO_ELOG("SQLite error: %d", ret);
+    return ret;
+  }
+
   auto queries = SplitString(sql_metrics::kAndroidMem, ";\n\n");
   for (const auto& query : queries) {
     PERFETTO_DLOG("Executing query: %s", query.c_str());

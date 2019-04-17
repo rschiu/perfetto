@@ -65,6 +65,18 @@ class TraceProcessorImpl : public TraceProcessor {
 
   void InterruptQuery() override;
 
+  template <typename Context>
+  int RegisterScalarFunction(const std::string& name,
+                             int numArgs,
+                             std::unique_ptr<Context> context,
+                             void (*fn)(sqlite3_context*,
+                                        int,
+                                        sqlite3_value**)) {
+    auto* ctx_ptr = context.release();
+    return sqlite3_create_function_v2(*db_, name.c_str(), numArgs, SQLITE_UTF8,
+                                      ctx_ptr, fn, nullptr, nullptr, free);
+  }
+
  private:
   // Needed for iterators to be able to delete themselves from the vector.
   friend class IteratorImpl;

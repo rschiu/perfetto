@@ -67,7 +67,7 @@ def filename_to_variable(filename):
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('--cc_out', required=True)
-  parser.add_argument('sql_files', action='append')
+  parser.add_argument('sql_files', nargs='*')
   args = parser.parse_args()
 
   # Extract the SQL output from each file.
