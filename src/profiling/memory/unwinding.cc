@@ -283,7 +283,18 @@ void UnwindingWorker::OnDataAvailable(base::UnixSocket* self) {
   // Drain buffer to clear the notification.
   char recv_buf[kUnwindBatchSize];
   self->Receive(recv_buf, sizeof(recv_buf));
-  HandleUnwindBatch(self->peer_pid());
+
+  auto it = client_data_.find(self->peer_pid());
+  if (it == client_data_.end()) {
+    // This can happen if the client disconnected before the buffer was fully
+    // handled.
+    PERFETTO_DLOG("Unexpected data.");
+    return;
+  }
+
+  ClientData& client_data = it->second;
+  if (!client_data.has_task_scheduled)
+    HandleUnwindBatch(self->peer_pid());
 }
 
 void UnwindingWorker::HandleUnwindBatch(pid_t peer_pid) {
@@ -313,8 +324,11 @@ void UnwindingWorker::HandleUnwindBatch(pid_t peer_pid) {
   }
 
   if (i == kUnwindBatchSize) {
+    client_data.has_task_scheduled = true;
     thread_task_runner_.get()->PostTask(
         [this, peer_pid] { HandleUnwindBatch(peer_pid); });
+  } else {
+    client_data.has_task_scheduled = false;
   }
 }
 
@@ -378,8 +392,11 @@ void UnwindingWorker::HandleHandoffSocket(HandoffData handoff_data) {
                              std::move(handoff_data.fds[kHandshakeMaps]),
                              std::move(handoff_data.fds[kHandshakeMem]));
   ClientData client_data{
-      handoff_data.data_source_instance_id, std::move(sock),
-      std::move(metadata), std::move(handoff_data.shmem),
+      handoff_data.data_source_instance_id,
+      std::move(sock),
+      std::move(metadata),
+      std::move(handoff_data.shmem),
+      false,
   };
   client_data_.emplace(peer_pid, std::move(client_data));
 }

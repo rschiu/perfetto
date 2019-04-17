@@ -185,6 +185,7 @@ class UnwindingWorker : public base::UnixSocket::EventListener {
     std::unique_ptr<base::UnixSocket> sock;
     UnwindingMetadata metadata;
     SharedRingBuffer shmem;
+    bool has_task_scheduled;
   };
 
   // Task runner with a dedicated thread. Keep at the start of the data member
