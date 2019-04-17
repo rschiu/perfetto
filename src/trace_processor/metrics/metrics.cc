@@ -16,6 +16,9 @@
 
 #include "src/trace_processor/metrics/metrics.h"
 
+#include <unordered_map>
+#include <vector>
+
 #include "perfetto/metrics/android/mem_metric.pbzero.h"
 #include "perfetto/metrics/metrics.pbzero.h"
 #include "perfetto/protozero/scattered_heap_buffer.h"
@@ -50,13 +53,51 @@ std::vector<std::string> SplitString(const std::string& text,
   return output;
 }
 
+int TemplateReplace(
+    const std::string& raw_text,
+    const std::unordered_map<std::string, std::string>& substituitions,
+    std::vector<char>* out) {
+  int64_t sub_start_idx = -1;
+  for (size_t i = 0; i < raw_text.size(); i++) {
+    char c = raw_text[i];
+    if (c == '{') {
+      if (sub_start_idx != -1)
+        return 1;
+
+      if (i + 1 < raw_text.size() && raw_text[i + 1] == '{') {
+        sub_start_idx = static_cast<int64_t>(i) + 2;
+        i++;
+        continue;
+      }
+    } else if (c == '}' && sub_start_idx != -1) {
+      if (i + 1 >= raw_text.size() || raw_text[i] != '}')
+        return 2;
+
+      size_t len = i - static_cast<size_t>(sub_start_idx);
+      auto key = base::StringView(&(raw_text.data()[sub_start_idx]), len)
+                     .ToStdString();
+      const auto& value = substituitions.find(key)->second;
+      std::copy(value.begin(), value.end(), std::back_inserter(*out));
+
+      sub_start_idx = -1;
+      i++;
+      continue;
+    } else if (sub_start_idx != -1) {
+      continue;
+    }
+    out->push_back(c);
+  }
+  out->push_back('\0');
+  return sub_start_idx == -1 ? 0 : 3;
+}
+
 struct FunctionContext {
   TraceProcessorImpl* tp;
 };
 
 void RunMetric(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
   auto* fn_ctx = static_cast<FunctionContext*>(sqlite3_user_data(ctx));
-  if (argc == 0 || sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+  if (argc % 2 != 1 || sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
     sqlite3_result_error(ctx, "Invalid call to RUN_METRIC", -1);
     return;
   }
@@ -65,19 +106,39 @@ void RunMetric(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
       reinterpret_cast<const char*>(sqlite3_value_text(argv[0]));
   const char* sql = sql_metrics::FindSqlFromFilename(filename);
   if (!sql) {
-    sqlite3_result_error(ctx, "Unknown filename provided to RUN_METRIC", -1);
+    sqlite3_result_error(ctx, "RUN_METRIC: Unknown filename provided", -1);
     return;
   }
 
-  for (const auto& query : SplitString(sql, ";\n\n")) {
-    PERFETTO_DLOG("Executing query in RUN_METRIC: %s", query.c_str());
+  std::unordered_map<std::string, std::string> substitutions;
+  for (int i = 1; i < argc; i += 2) {
+    if (sqlite3_value_type(argv[i]) != SQLITE_TEXT) {
+      sqlite3_result_error(ctx, "RUN_METRIC: Invalid args", -1);
+      return;
+    }
 
-    auto it = fn_ctx->tp->ExecuteQuery(query);
+    auto* key_str = reinterpret_cast<const char*>(sqlite3_value_text(argv[i]));
+    auto* value_str =
+        reinterpret_cast<const char*>(sqlite3_value_text(argv[i + 1]));
+    substitutions[key_str] = value_str;
+  }
+
+  for (const auto& query : SplitString(sql, ";\n")) {
+    std::vector<char> buffer;
+    int ret = TemplateReplace(query, substitutions, &buffer);
+    if (ret) {
+      sqlite3_result_error(
+          ctx, "RUN_METRIC: Error when performing substitution", -1);
+      return;
+    }
+
+    PERFETTO_LOG("RUN_METRIC: Executing query: %s", buffer.data());
+    auto it = fn_ctx->tp->ExecuteQuery(buffer.data());
     if (auto opt_error = it.GetLastError()) {
-      sqlite3_result_error(ctx, "Error when running RUN_METRIC file", -1);
+      sqlite3_result_error(ctx, "RUN_METRIC: Error when running file", -1);
       return;
     } else if (it.Next()) {
-      sqlite3_result_error(ctx, "RUN_METRIC function produced output", -1);
+      sqlite3_result_error(ctx, "RUN_METRIC: function produced output", -1);
       return;
     }
   }
@@ -102,7 +163,7 @@ int ComputeMetrics(TraceProcessorImpl* tp,
     return ret;
   }
 
-  for (const auto& query : SplitString(sql_metrics::kAndroidMem, ";\n\n")) {
+  for (const auto& query : SplitString(sql_metrics::kAndroidMem, ";\n")) {
     PERFETTO_DLOG("Executing query: %s", query.c_str());
     auto prep_it = tp->ExecuteQuery(query);
     auto prep_has_next = prep_it.Next();
@@ -129,14 +190,32 @@ int ComputeMetrics(TraceProcessorImpl* tp,
   PERFETTO_CHECK(has_next);
   PERFETTO_CHECK(it.Get(0).type == SqlValue::Type::kLong);
 
+  has_next = it.Next();
+  PERFETTO_DCHECK(!has_next);
+
   auto* memory = metrics.set_android_mem();
   memory->set_system_metrics()->set_lmks()->set_total_count(
       static_cast<int32_t>(it.Get(0).long_value));
 
-  *metrics_proto = delegate.StitchSlices();
+  it = tp->ExecuteQuery("SELECT * from anon_rss;");
+  while (it.Next()) {
+    const char* name = it.Get(0).string_value;
 
-  has_next = it.Next();
-  PERFETTO_DCHECK(!has_next);
+    auto* process = memory->add_process_metrics();
+    process->set_process_name(name);
+
+    auto* anon = process->set_overall_counters()->set_anon_rss();
+    anon->set_min(it.Get(1).AsDouble());
+    anon->set_max(it.Get(2).AsDouble());
+    anon->set_avg(it.Get(3).AsDouble());
+  }
+  if (auto opt_error = it.GetLastError()) {
+    PERFETTO_ELOG("SQLite error: %s", opt_error->c_str());
+    return 1;
+  }
+
+  metrics.Finalize();
+  *metrics_proto = delegate.StitchSlices();
   return 0;
 }
 

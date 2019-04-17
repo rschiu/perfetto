@@ -37,6 +37,13 @@ struct SqlValue {
     kDouble,
   };
 
+  double AsDouble() {
+    if (type == kString || type == kNull) {
+      return 0;
+    }
+    return type == kDouble ? double_value : static_cast<double>(long_value);
+  }
+
   // Up to 1 of these fields can be accessed depending on |type|.
   union {
     // This string will be owned by the iterator that returned it and is valid
