@@ -48,6 +48,7 @@ namespace {
 
 const char kSingleByte[1] = {'x'};
 constexpr std::chrono::seconds kLockTimeout{1};
+constexpr kResendBackoffUs = 500;
 
 inline bool IsMainThread() {
   return getpid() == base::GetThreadId();
@@ -273,11 +274,27 @@ bool Client::RecordMalloc(uint64_t alloc_size,
   msg.payload = const_cast<char*>(stacktop);
   msg.payload_size = static_cast<size_t>(stack_size);
 
-  if (!SendWireMessage(&shmem_, msg)) {
-    PERFETTO_PLOG("Failed to write to shared ring buffer (RecordMalloc).");
+  if (!MaybeResendWireMessage(msg))
     return false;
-  }
+
   return SendControlSocketByte();
+}
+
+bool Client::MaybeResendWireMessage(const WireMessage& msg) {
+  bool sent_message = false;
+  do {
+    sent_message = SendWireMessage(&shmem_, msg);
+    if (PERFETTO_UNLIKELY(!sent_message)) {
+      if (errno == EAGAIN && client_config_.block_client) {
+        PERFETTO_PLOG(
+            "Failed to write to shared ring buffer. Retrying in 500us.");
+        usleep(kResendBackoffUs);
+      } else {
+        PERFETTO_PLOG("Failed to write to shared ring buffer. Disconnecting.");
+      }
+    }
+  } while (PERFETTO_UNLIKELY(!sent_message && client_config_.block_client));
+  return sent_message;
 }
 
 bool Client::RecordFree(const uint64_t alloc_address) {
@@ -304,10 +321,8 @@ bool Client::FlushFreesLocked() {
   WireMessage msg = {};
   msg.record_type = RecordType::Free;
   msg.free_header = &free_batch_;
-  if (!SendWireMessage(&shmem_, msg)) {
-    PERFETTO_PLOG("Failed to write to shared ring buffer (FlushFreesLocked).");
+  if (!MaybeResendWireMessage(msg))
     return false;
-  }
   return SendControlSocketByte();
 }
 

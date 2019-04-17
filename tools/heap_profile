@@ -89,6 +89,7 @@ data_sources {{
 
       all: {all}
       shmem_size_bytes: {shmem_size}
+      block_client: true
       sampling_interval_bytes: {interval}
 {target_cfg}
 {continuous_dump_cfg}

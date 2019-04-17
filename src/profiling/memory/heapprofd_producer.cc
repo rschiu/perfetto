@@ -50,6 +50,7 @@ constexpr uint64_t kMaxShmemSize = 500 * 1048576;    // ~500 MB
 ClientConfiguration MakeClientConfiguration(const DataSourceConfig& cfg) {
   ClientConfiguration client_config;
   client_config.interval = cfg.heapprofd_config().sampling_interval_bytes();
+  client_config.block_client = cfg.heapprofd_config().block_client();
   return client_config;
 }
 
