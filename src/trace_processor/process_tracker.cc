@@ -44,9 +44,16 @@ UniqueTid ProcessTracker::StartNewThread(int64_t timestamp,
   return new_utid;
 }
 
-UniqueTid ProcessTracker::UpdateThread(int64_t timestamp,
-                                       uint32_t tid,
-                                       StringId thread_name_id) {
+UniqueTid ProcessTracker::GetOrCreateThread(uint32_t tid) {
+  auto pair_it = tids_.equal_range(tid);
+  if (pair_it.first != pair_it.second) {
+    return std::prev(pair_it.second)->second;
+  }
+  return StartNewThread(0, tid, 0);
+}
+
+UniqueTid ProcessTracker::UpdateThreadName(uint32_t tid,
+                                           StringId thread_name_id) {
   auto pair_it = tids_.equal_range(tid);
 
   // If a utid exists for the tid, find it and update the name.
@@ -60,7 +67,7 @@ UniqueTid ProcessTracker::UpdateThread(int64_t timestamp,
   }
 
   // If none exist, assign a new utid and store it.
-  return StartNewThread(timestamp, tid, thread_name_id);
+  return StartNewThread(0, tid, thread_name_id);
 }
 
 UniqueTid ProcessTracker::UpdateThread(uint32_t tid, uint32_t pid) {
