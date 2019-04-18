@@ -85,8 +85,10 @@ class Interner {
 
   template <typename... U>
   Interned Intern(U... args) {
-    auto itr = entries_.emplace(this, next_id++, std::forward<U...>(args...));
-    Entry& entry = const_cast<Entry&>(*itr.first);
+    auto p = entries_.emplace(this, next_id, std::forward<U...>(args...));
+    if (p.second)
+      next_id++;
+    Entry& entry = const_cast<Entry&>(*p.first);
     entry.ref_count++;
     return Interned(&entry);
   }
