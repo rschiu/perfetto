@@ -50,6 +50,39 @@ std::vector<std::string> SplitString(const std::string& text,
   return output;
 }
 
+struct FunctionContext {
+  TraceProcessorImpl* tp;
+};
+
+void RunMetric(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
+  auto* fn_ctx = static_cast<FunctionContext*>(sqlite3_user_data(ctx));
+  if (argc == 0 || sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+    sqlite3_result_error(ctx, "Invalid call to RUN_METRIC", -1);
+    return;
+  }
+
+  const char* filename =
+      reinterpret_cast<const char*>(sqlite3_value_text(argv[0]));
+  const char* sql = sql_metrics::FindSqlFromFilename(filename);
+  if (!sql) {
+    sqlite3_result_error(ctx, "Unknown filename provided to RUN_METRIC", -1);
+    return;
+  }
+
+  for (const auto& query : SplitString(sql, ";\n\n")) {
+    PERFETTO_DLOG("Executing query in RUN_METRIC: %s", query.c_str());
+
+    auto it = fn_ctx->tp->ExecuteQuery(query);
+    if (auto opt_error = it.GetLastError()) {
+      sqlite3_result_error(ctx, "Error when running RUN_METRIC file", -1);
+      return;
+    } else if (it.Next()) {
+      sqlite3_result_error(ctx, "RUN_METRIC function produced output", -1);
+      return;
+    }
+  }
+}
+
 }  // namespace
 
 int ComputeMetrics(TraceProcessorImpl* tp,
@@ -60,8 +93,16 @@ int ComputeMetrics(TraceProcessorImpl* tp,
     return 1;
   }
 
-  auto queries = SplitString(sql_metrics::kAndroidMem, ";\n\n");
-  for (const auto& query : queries) {
+  std::unique_ptr<FunctionContext> ctx(new FunctionContext());
+  ctx->tp = tp;
+  auto ret =
+      tp->RegisterScalarFunction("RUN_METRIC", -1, std::move(ctx), &RunMetric);
+  if (ret) {
+    PERFETTO_ELOG("SQLite error: %d", ret);
+    return ret;
+  }
+
+  for (const auto& query : SplitString(sql_metrics::kAndroidMem, ";\n\n")) {
     PERFETTO_DLOG("Executing query: %s", query.c_str());
     auto prep_it = tp->ExecuteQuery(query);
     auto prep_has_next = prep_it.Next();
