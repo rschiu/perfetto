@@ -124,8 +124,6 @@ std::shared_ptr<Client> Client::CreateAndHandshake(
     return nullptr;
   }
 
-  PERFETTO_DCHECK(sock.IsBlocking());
-
   // We might be running in a process that is not dumpable (such as app
   // processes on user builds), in which case the /proc/self/mem will be chown'd
   // to root:root, and will not be accessible even to the process itself (see
@@ -202,7 +200,6 @@ std::shared_ptr<Client> Client::CreateAndHandshake(
   PERFETTO_DCHECK(client_config.interval >= 1);
   Sampler sampler{client_config.interval};
   // note: the shared_ptr will retain a copy of the unhooked_allocator
-  sock.SetBlocking(false);
   return std::allocate_shared<Client>(
       unhooked_allocator, std::move(sock), client_config,
       std::move(shmem.value()), std::move(sampler), FindMainThreadStack());
@@ -217,9 +214,7 @@ Client::Client(base::UnixSocketRaw sock,
       sampler_(std::move(sampler)),
       sock_(std::move(sock)),
       main_thread_stack_base_(main_thread_stack_base),
-      shmem_(std::move(shmem)) {
-  PERFETTO_DCHECK(!sock_.IsBlocking());
-}
+      shmem_(std::move(shmem)) {}
 
 const char* Client::GetStackBase() {
   if (IsMainThread()) {
@@ -277,7 +272,11 @@ bool Client::RecordMalloc(uint64_t alloc_size,
     PERFETTO_PLOG("Failed to write to shared ring buffer (RecordMalloc).");
     return false;
   }
-  return SendControlSocketByte();
+  if (sock_.Send(kSingleByte, sizeof(kSingleByte)) == -1) {
+    PERFETTO_PLOG("Failed to send control socket byte.");
+    return false;
+  }
+  return true;
 }
 
 bool Client::RecordFree(const uint64_t alloc_address) {
@@ -308,24 +307,7 @@ bool Client::FlushFreesLocked() {
     PERFETTO_PLOG("Failed to write to shared ring buffer (FlushFreesLocked).");
     return false;
   }
-  return SendControlSocketByte();
-}
-
-bool Client::IsConnected() {
-  PERFETTO_DCHECK(!sock_.IsBlocking());
-  char buf[1];
-  ssize_t recv_bytes = sock_.Receive(buf, sizeof(buf), nullptr, 0);
-  if (recv_bytes == 0)
-    return false;
-  else if (recv_bytes > 0)
-    return true;
-  return errno == EAGAIN || errno == EWOULDBLOCK;
-}
-
-bool Client::SendControlSocketByte() {
-  PERFETTO_DCHECK(!sock_.IsBlocking());
-  if (sock_.Send(kSingleByte, sizeof(kSingleByte)) == -1 && errno != EAGAIN &&
-      errno != EWOULDBLOCK) {
+  if (sock_.Send(kSingleByte, sizeof(kSingleByte)) == -1) {
     PERFETTO_PLOG("Failed to send control socket byte.");
     return false;
   }
