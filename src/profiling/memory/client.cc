@@ -218,7 +218,6 @@ Client::Client(base::UnixSocketRaw sock,
       sock_(std::move(sock)),
       main_thread_stack_base_(main_thread_stack_base),
       shmem_(std::move(shmem)) {
-  PERFETTO_DCHECK(!sock_.IsBlocking());
 }
 
 const char* Client::GetStackBase() {
@@ -309,17 +308,6 @@ bool Client::FlushFreesLocked() {
     return false;
   }
   return SendControlSocketByte();
-}
-
-bool Client::IsConnected() {
-  PERFETTO_DCHECK(!sock_.IsBlocking());
-  char buf[1];
-  ssize_t recv_bytes = sock_.Receive(buf, sizeof(buf), nullptr, 0);
-  if (recv_bytes == 0)
-    return false;
-  else if (recv_bytes > 0)
-    return true;
-  return errno == EAGAIN || errno == EWOULDBLOCK;
 }
 
 bool Client::SendControlSocketByte() {
