@@ -73,8 +73,9 @@ class TraceProcessorImpl : public TraceProcessor {
                                         int,
                                         sqlite3_value**)) {
     auto* ctx_ptr = context.release();
-    return sqlite3_create_function_v2(*db_, name.c_str(), numArgs, SQLITE_UTF8,
-                                      ctx_ptr, fn, nullptr, nullptr, free);
+    return sqlite3_create_function_v2(
+        *db_, name.c_str(), numArgs, SQLITE_UTF8, ctx_ptr, fn, nullptr, nullptr,
+        [](void* ptr) { delete static_cast<Context*>(ptr); });
   }
 
  private:
@@ -140,6 +141,12 @@ class TraceProcessor::IteratorImpl {
       case SQLITE_FLOAT:
         value.type = SqlValue::kDouble;
         value.double_value = sqlite3_column_double(*stmt_, column);
+        break;
+      case SQLITE_BLOB:
+        value.type = SqlValue::kBytes;
+        value.bytes_value = sqlite3_column_blob(*stmt_, column);
+        value.bytes_count =
+            static_cast<size_t>(sqlite3_column_bytes(*stmt_, column));
         break;
       case SQLITE_NULL:
         value.type = SqlValue::kNull;
