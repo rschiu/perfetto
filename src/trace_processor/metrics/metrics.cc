@@ -99,11 +99,13 @@ class FieldDescriptor {
   FieldDescriptor(std::string name,
                   uint32_t number,
                   uint32_t type,
-                  std::string raw_type_name)
+                  std::string raw_type_name,
+                  bool is_repeated)
       : name_(std::move(name)),
         number_(number),
         type_(type),
-        raw_type_name_(std::move(raw_type_name)) {}
+        raw_type_name_(std::move(raw_type_name)),
+        is_repeated_(is_repeated) {}
 
   void SetMessageTypeIdx(uint32_t idx) { message_type_idx_ = idx; }
 
@@ -111,12 +113,15 @@ class FieldDescriptor {
   uint32_t number() const { return number_; }
   uint32_t type() const { return type_; }
   const std::string& raw_type_name() const { return raw_type_name_; }
+  bool is_repeated() const { return is_repeated_; }
 
  private:
   std::string name_;
   uint32_t number_;
   uint32_t type_;
   std::string raw_type_name_;
+  bool is_repeated_;
+
   base::Optional<uint32_t> message_type_idx_;
 };
 
@@ -199,7 +204,8 @@ void AddAllProtoDescriptors(const std::string& package_name,
         base::StringView(f_decoder.name()).ToStdString(),
         static_cast<uint32_t>(f_decoder.number()),
         static_cast<uint32_t>(f_decoder.type()),
-        base::StringView(f_decoder.type_name()).ToStdString());
+        base::StringView(f_decoder.type_name()).ToStdString(),
+        f_decoder.label() == FieldDescriptorProto::LABEL_REPEATED);
     proto_descriptor.AddField(std::move(field));
   }
 
@@ -295,11 +301,133 @@ void RunMetric(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
   }
 }
 
+SqlValue SqlValueFromSqliteValue(sqlite3_value* value) {
+  SqlValue sql_value;
+  switch (sqlite3_value_type(value)) {
+    case SQLITE_INTEGER:
+      sql_value.type = SqlValue::Type::kLong;
+      sql_value.long_value = sqlite3_value_int64(value);
+      break;
+    case SQLITE_FLOAT:
+      sql_value.type = SqlValue::Type::kDouble;
+      sql_value.double_value = sqlite3_value_double(value);
+      break;
+    case SQLITE_TEXT:
+      sql_value.type = SqlValue::Type::kString;
+      sql_value.string_value =
+          reinterpret_cast<const char*>(sqlite3_value_text(value));
+      break;
+    case SQLITE_BLOB:
+      sql_value.type = SqlValue::Type::kBytes;
+      sql_value.bytes_value = sqlite3_value_blob(value);
+      sql_value.bytes_count = static_cast<size_t>(sqlite3_value_bytes(value));
+      break;
+  }
+  return sql_value;
+}
+
 struct BuildProtoFunctionContext {
   TraceProcessorImpl* tp;
   DescriptorPool* pool;
   std::string proto_name;
 };
+
+int AppendValueToMessage(sqlite3_context* ctx,
+                         const FieldDescriptor& field,
+                         const SqlValue& value,
+                         protozero::Message* message) {
+  using FieldDescriptorProto = protos::pbzero::FieldDescriptorProto;
+  switch (field.type()) {
+    case FieldDescriptorProto::TYPE_INT32:
+    case FieldDescriptorProto::TYPE_INT64:
+    case FieldDescriptorProto::TYPE_UINT32:
+    case FieldDescriptorProto::TYPE_BOOL:
+      if (value.type != SqlValue::kLong) {
+        sqlite3_result_error(ctx, "BuildProto: field has wrong type", -1);
+        return 1;
+      }
+      message->AppendVarInt(field.number(), value.long_value);
+      break;
+    case FieldDescriptorProto::TYPE_SINT32:
+    case FieldDescriptorProto::TYPE_SINT64:
+      if (value.type != SqlValue::kLong) {
+        sqlite3_result_error(ctx, "BuildProto: field has wrong type", -1);
+        return 1;
+      }
+      message->AppendSignedVarInt(field.number(), value.long_value);
+      break;
+    case FieldDescriptorProto::TYPE_FIXED32:
+    case FieldDescriptorProto::TYPE_SFIXED32:
+    case FieldDescriptorProto::TYPE_FIXED64:
+    case FieldDescriptorProto::TYPE_SFIXED64:
+      if (value.type != SqlValue::kLong) {
+        sqlite3_result_error(ctx, "BuildProto: field has wrong type", -1);
+        return 1;
+      }
+      message->AppendFixed(field.number(), value.long_value);
+      break;
+    case FieldDescriptorProto::TYPE_FLOAT:
+    case FieldDescriptorProto::TYPE_DOUBLE:
+      if (value.type != SqlValue::kDouble) {
+        sqlite3_result_error(ctx, "BuildProto: field has wrong type", -1);
+        return 1;
+      }
+      message->AppendFixed(field.number(), value.double_value);
+      break;
+    case FieldDescriptorProto::TYPE_STRING: {
+      if (value.type != SqlValue::kString) {
+        sqlite3_result_error(ctx, "BuildProto: field has wrong type", -1);
+        return 1;
+      }
+      message->AppendString(field.number(), value.string_value);
+      break;
+    }
+    case FieldDescriptorProto::TYPE_MESSAGE: {
+      // TODO(lalitm): verify the type of the nested message.
+      if (value.type != SqlValue::kBytes) {
+        sqlite3_result_error(ctx, "BuildProto: field has wrong type", -1);
+        return 1;
+      }
+      message->AppendBytes(field.number(), value.bytes_value,
+                           value.bytes_count);
+      break;
+    }
+    case FieldDescriptorProto::TYPE_UINT64:
+      sqlite3_result_error(ctx, "BuildProto: uint64_t unsupported", -1);
+      return 1;
+    case FieldDescriptorProto::TYPE_GROUP:
+      sqlite3_result_error(ctx, "BuildProto: groups unsupported", -1);
+      return 1;
+    case FieldDescriptorProto::TYPE_ENUM:
+      // TODO(lalit): add support for enums.
+      sqlite3_result_error(ctx, "BuildProto: enums unsupported", -1);
+      return 1;
+  }
+  return 0;
+}
+
+int BuildProtoRepeatedField(sqlite3_context* ctx,
+                            BuildProtoFunctionContext* fn_ctx,
+                            const FieldDescriptor& field,
+                            const std::string table_name,
+                            protozero::Message* message) {
+  std::string query = "SELECT * FROM " + table_name + ";";
+  auto it = fn_ctx->tp->ExecuteQuery(query);
+  while (it.Next()) {
+    if (it.ColumnCount() != 1) {
+      PERFETTO_ELOG("Repeated table should have exactly one column");
+      return 1;
+    }
+    int ret = AppendValueToMessage(ctx, field, it.Get(0), message);
+    if (ret)
+      return ret;
+  }
+  if (auto opt_error = it.GetLastError()) {
+    sqlite3_result_error(ctx, "BuildProtoRepeatedField error", -1);
+    return 1;
+  }
+  return 0;
+}
 
 void BuildProto(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
   auto* fn_ctx =
@@ -320,6 +448,7 @@ void BuildProto(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
   message.Reset(&writer);
 
   for (int i = 0; i < argc; i += 2) {
+    auto* value = argv[i + 1];
     if (sqlite3_value_type(argv[i]) != SQLITE_TEXT) {
       sqlite3_result_error(ctx, "BuildProto: Invalid args", -1);
       return;
@@ -328,75 +457,18 @@ void BuildProto(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
     auto* key_str = reinterpret_cast<const char*>(sqlite3_value_text(argv[i]));
     auto opt_field_idx = desc.FindFieldIdx(key_str);
     const auto& field = desc.fields()[opt_field_idx.value()];
-
-    using FieldDescriptorProto = protos::pbzero::FieldDescriptorProto;
-    auto* value = argv[i + 1];
-    switch (field.type()) {
-      case FieldDescriptorProto::TYPE_INT32:
-      case FieldDescriptorProto::TYPE_INT64:
-      case FieldDescriptorProto::TYPE_UINT32:
-      case FieldDescriptorProto::TYPE_BOOL:
-        if (sqlite3_value_type(value) != SQLITE_INTEGER) {
-          sqlite3_result_error(ctx, "BuildProto: field has wrong type", -1);
-          return;
-        }
-        message.AppendVarInt(field.number(), sqlite3_value_int64(value));
-        break;
-      case FieldDescriptorProto::TYPE_SINT32:
-      case FieldDescriptorProto::TYPE_SINT64:
-        if (sqlite3_value_type(value) != SQLITE_INTEGER) {
-          sqlite3_result_error(ctx, "BuildProto: field has wrong type", -1);
-          return;
-        }
-        message.AppendSignedVarInt(field.number(), sqlite3_value_int64(value));
-        break;
-      case FieldDescriptorProto::TYPE_FIXED32:
-      case FieldDescriptorProto::TYPE_SFIXED32:
-      case FieldDescriptorProto::TYPE_FIXED64:
-      case FieldDescriptorProto::TYPE_SFIXED64:
-        if (sqlite3_value_type(value) != SQLITE_INTEGER) {
-          sqlite3_result_error(ctx, "BuildProto: field has wrong type", -1);
-          return;
-        }
-        message.AppendFixed(field.number(), sqlite3_value_int64(value));
-        break;
-      case FieldDescriptorProto::TYPE_FLOAT:
-      case FieldDescriptorProto::TYPE_DOUBLE:
-        if (sqlite3_value_type(value) != SQLITE_FLOAT) {
-          sqlite3_result_error(ctx, "BuildProto: field has wrong type", -1);
-          return;
-        }
-        message.AppendFixed(field.number(), sqlite3_value_double(value));
-        break;
-      case FieldDescriptorProto::TYPE_STRING: {
-        if (sqlite3_value_type(value) != SQLITE_TEXT) {
-          sqlite3_result_error(ctx, "BuildProto: field has wrong type", -1);
-          return;
-        }
-        auto* text = reinterpret_cast<const char*>(sqlite3_value_text(value));
-        message.AppendString(field.number(), text);
-        break;
-      }
-      case FieldDescriptorProto::TYPE_MESSAGE: {
-        // TODO(lalitm): verify the type of the nested message.
-        if (sqlite3_value_type(value) != SQLITE_BLOB) {
-          sqlite3_result_error(ctx, "BuildProto: field has wrong type", -1);
-          return;
-        }
-        auto* blob = sqlite3_value_blob(value);
-        auto bytes = static_cast<size_t>(sqlite3_value_bytes(value));
-        message.AppendBytes(field.number(), blob, bytes);
-        break;
-      }
-      case FieldDescriptorProto::TYPE_UINT64:
-        sqlite3_result_error(ctx, "BuildProto: uint64_t unsupported", -1);
+    if (field.is_repeated()) {
+      if (sqlite3_value_type(value) != SQLITE_TEXT) {
+        sqlite3_result_error(
+            ctx, "BuildProto: repeated field doesn't have table name", -1);
         return;
-      case FieldDescriptorProto::TYPE_GROUP:
-        sqlite3_result_error(ctx, "BuildProto: groups unsupported", -1);
+      }
+      auto* text = reinterpret_cast<const char*>(sqlite3_value_text(value));
+      if (BuildProtoRepeatedField(ctx, fn_ctx, field, text, &message))
         return;
-      case FieldDescriptorProto::TYPE_ENUM:
-        // TODO(lalit): add support for enums.
-        sqlite3_result_error(ctx, "BuildProto: enums unsupported", -1);
+    } else {
+      auto sql_value = SqlValueFromSqliteValue(value);
+      if (AppendValueToMessage(ctx, field, sql_value, &message))
         return;
     }
   }
