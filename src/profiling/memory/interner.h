@@ -97,11 +97,15 @@ class Interner {
 
   template <typename... U>
   Interned Intern(U... args) {
-    auto itr_and_inserted =
-        entries_.emplace(this, next_id, std::forward<U...>(args...));
-    if (itr_and_inserted.second)
+    Entry item(this, next_id, std::forward<U...>(args...));
+    auto it = entries_.find(item);
+    if (it == entries_.cend()) {
+      auto it_and_inserted = entries_.emplace(std::move(item));
       next_id++;
-    Entry& entry = const_cast<Entry&>(*itr_and_inserted.first);
+      it = it_and_inserted.first;
+      PERFETTO_DCHECK(it_and_inserted.second);
+    }
+    Entry& entry = const_cast<Entry&>(*it);
     entry.ref_count++;
     return Interned(&entry);
   }
