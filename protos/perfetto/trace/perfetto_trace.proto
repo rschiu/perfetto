@@ -3646,7 +3646,15 @@ message HeapprofdConfig {
 
   // For watermark based triggering or local debugging.
   repeated uint64 pid = 4;
+
+  // Profile all processes on the system.
+  //
+  // WARNING: ON UNMODIFIED ANDROID BUILDS THIS WILL CAUSE ZYGOTE TO CRASH, AS
+  // IT WILL REFUSE TO START NEW APPS BECAUSE OF ITS OPEN SOCKET TO HEAPPROFD.
+  // SEE
+  // https://android.googlesource.com/platform/frameworks/base/+/master/core/jni/fd_utils.cpp#181
   optional bool all = 5;
+
   // Do not emit function names for mappings starting with this prefix.
   // E.g. /system to not emit symbols for any system libraries.
   repeated string skip_symbol_prefix = 7;
