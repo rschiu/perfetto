@@ -44,6 +44,7 @@ NAMESPACE_BEGIN = '''
 namespace perfetto {
 namespace trace_processor {
 namespace metrics {
+namespace sql_metrics {
 '''
 
 FILE_TO_SQL_STRUCT = '''
@@ -54,6 +55,7 @@ struct FileToSql {
 '''
 
 NAMESPACE_END = '''
+}  // namespace sql_metrics
 }  // namespace metrics
 }  // namespace trace_processor
 }  // namsepace perfetto
