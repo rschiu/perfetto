@@ -21,6 +21,7 @@
 
 #include "perfetto/base/circular_queue.h"
 #include "perfetto/trace_processor/basic_types.h"
+#include "src/trace_processor/proto_incremental_state.h"
 #include "src/trace_processor/trace_blob_view.h"
 #include "src/trace_processor/trace_processor_context.h"
 #include "src/trace_processor/trace_storage.h"
@@ -129,6 +130,14 @@ class TraceSorter {
     // batch of ftrace events. This is to amortize the overhead of handling
     // global ordering and doing that in batches only after all ftrace events
     // for a bundle are pushed.
+  }
+
+  inline void PushTrackEvent(
+      int64_t /*timestamp*/,
+      int64_t /*thread_time*/,
+      ProtoIncrementalState::PacketSequenceState* /*state*/,
+      TraceBlobView /*event*/) {
+    // TODO(eseckler): Implement.
   }
 
   inline void FinalizeFtraceEventBatch(uint32_t cpu) {
