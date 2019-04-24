@@ -67,6 +67,7 @@ Chunk SharedMemoryArbiterImpl::GetNewChunk(
   unsigned stall_interval_us = 0;
   static const unsigned kMaxStallIntervalUs = 100000;
   static const int kLogAfterNStalls = 3;
+  static const int kAssertAtNStalls = 100;
 
   for (;;) {
     // TODO(primiano): Probably this lock is not really required and this code
@@ -127,6 +128,9 @@ Chunk SharedMemoryArbiterImpl::GetNewChunk(
       // commits (crbug.com/919187#c28).
       if (task_runner_->RunsTasksOnCurrentThread())
         FlushPendingCommitDataRequests();
+    } else if (stall_count == kAssertAtNStalls) {
+      PERFETTO_FATAL(
+          "Shared memory buffer max stall count exceeded; possibly deadlock");
     }
     base::SleepMicroseconds(stall_interval_us);
     stall_interval_us =
