@@ -554,8 +554,8 @@ void* HEAPPROFD_ADD_PREFIX(_realloc)(void* pointer, size_t size) {
   if (size == 0 || sampled_alloc_sz == 0)
     return addr;
 
-  if (!client->RecordMalloc(size, sampled_alloc_sz,
-                            reinterpret_cast<uint64_t>(addr))) {
+  if (client && !client->RecordMalloc(size, sampled_alloc_sz,
+                                      reinterpret_cast<uint64_t>(addr))) {
     ShutdownLazy();
   }
   return addr;
