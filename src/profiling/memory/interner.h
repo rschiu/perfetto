@@ -19,6 +19,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
+#include <array>
 #include <functional>
 #include <unordered_set>
 
@@ -95,6 +97,41 @@ class Interner {
     Interner::Entry* entry_;
   };
 
+  Entry* FindInLRU(Entry& item) {
+    auto it =
+        std::find_if(lru_.begin(), lru_.end(), [item](const LRUEntry& other) {
+          return other != nullptr && *other.entry == item;
+        });
+
+    if (it != lru_.end()) {
+      LRUEntry& lru_entry = *it;
+      lru_entry.ts = ++lru_cur_ts_;
+      return lru_entry.entry;
+    }
+    return nullptr;
+  }
+
+  void AddToLRU(Entry* item) {
+    auto it = std::min_element(
+        lru_.begin(), lru_.end(),
+        [](const LRUEntry& a, const LRUEntry& b) { return a.ts < b.ts; });
+    PEFETTO_CHECK(it != lru_.end());
+    LRUEntry& lru_entry = *it;
+    lru_entry.entry = item;
+    lru_entry.ts = ++lru_cur_ts_;
+  }
+
+  void RemoveFromLRU(Entry* item) {
+    auto it = std::find_if(
+        lru_.begin(), lru_.end(),
+        [item](const LRUEntry& lru_entry) { return lru_entry.entry == item; });
+    if (it != lru_.end()) {
+      LRUEntry& lru_entry = *it;
+      lru_entry.entry = nullptr;
+      lru_entry.ts = 0;
+    }
+  }
+
   template <typename... U>
   Interned Intern(U... args) {
     Entry item(this, next_id, std::forward<U...>(args...));
@@ -118,11 +155,23 @@ class Interner {
 
  private:
   void Return(Entry* entry) {
+    RemoveFromLRU(entry);
+
     if (--entry->ref_count == 0)
       entries_.erase(*entry);
   }
+
   uint64_t next_id = 1;
   std::unordered_set<Entry, typename Entry::Hash> entries_;
+
+  static constexpr size_t kLRUSize = 5;
+  struct LRUEntry {
+    Entry* entry = nullptr;
+    uint64_t ts = 0;
+  };
+  uint64_t lru_cur_ts_ = 0;
+  std::array<LRUEntry, kLRUSize> lru_;
+
   static_assert(sizeof(Interned) == sizeof(void*),
                 "interned things should be small");
 };
