@@ -1336,15 +1336,22 @@ void TracingServiceImpl::ReadBuffers(TracingSessionID tsid,
   base::TimeMillis now = base::GetWallTimeMs();
   if (now >= tracing_session->last_snapshot_time + kSnapshotsInterval) {
     tracing_session->last_snapshot_time = now;
-    SnapshotSyncMarker(&packets);
-    SnapshotStats(tracing_session, &packets);
+    if (!tracing_session->config.default_data_source().disable_trace_stats()) {
+      SnapshotSyncMarker(&packets);
+      SnapshotStats(tracing_session, &packets);
+    }
 
-    if (!tracing_session->config.disable_clock_snapshotting())
+    if (!tracing_session->config.default_data_source()
+             .disable_clock_snapshotting()) {
       SnapshotClocks(&packets);
+    }
   }
-  MaybeEmitTraceConfig(tracing_session, &packets);
-  MaybeEmitSystemInfo(tracing_session, &packets);
-  MaybeEmitReceivedTriggers(tracing_session, &packets);
+  if (!tracing_session->config.default_data_source().disable_trace_config()) {
+    MaybeEmitTraceConfig(tracing_session, &packets);
+    MaybeEmitReceivedTriggers(tracing_session, &packets);
+  }
+  if (!tracing_session->config.default_data_source().disable_system_info())
+    MaybeEmitSystemInfo(tracing_session, &packets);
 
   size_t packets_bytes = 0;  // SUM(slice.size() for each slice in |packets|).
   size_t total_slices = 0;   // SUM(#slices in |packets|).

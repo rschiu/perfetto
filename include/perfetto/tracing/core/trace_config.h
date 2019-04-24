@@ -56,6 +56,7 @@ class AndroidPowerConfig;
 class AndroidLogConfig;
 class TestConfig;
 class TestConfig_DummyFields;
+class TraceConfig_DefaultDataSource;
 class TraceConfig_ProducerConfig;
 class TraceConfig_StatsdMetadata;
 class TraceConfig_GuardrailOverrides;
@@ -141,6 +142,50 @@ class PERFETTO_EXPORT TraceConfig {
    private:
     DataSourceConfig config_ = {};
     std::vector<std::string> producer_name_filter_;
+
+    // Allows to preserve unknown protobuf fields for compatibility
+    // with future versions of .proto files.
+    std::string unknown_fields_;
+  };
+
+  class PERFETTO_EXPORT DefaultDataSource {
+   public:
+    DefaultDataSource();
+    ~DefaultDataSource();
+    DefaultDataSource(DefaultDataSource&&) noexcept;
+    DefaultDataSource& operator=(DefaultDataSource&&);
+    DefaultDataSource(const DefaultDataSource&);
+    DefaultDataSource& operator=(const DefaultDataSource&);
+    bool operator==(const DefaultDataSource&) const;
+    bool operator!=(const DefaultDataSource& other) const {
+      return !(*this == other);
+    }
+
+    // Conversion methods from/to the corresponding protobuf types.
+    void FromProto(const perfetto::protos::TraceConfig_DefaultDataSource&);
+    void ToProto(perfetto::protos::TraceConfig_DefaultDataSource*) const;
+
+    bool disable_clock_snapshotting() const {
+      return disable_clock_snapshotting_;
+    }
+    void set_disable_clock_snapshotting(bool value) {
+      disable_clock_snapshotting_ = value;
+    }
+
+    bool disable_trace_stats() const { return disable_trace_stats_; }
+    void set_disable_trace_stats(bool value) { disable_trace_stats_ = value; }
+
+    bool disable_trace_config() const { return disable_trace_config_; }
+    void set_disable_trace_config(bool value) { disable_trace_config_ = value; }
+
+    bool disable_system_info() const { return disable_system_info_; }
+    void set_disable_system_info(bool value) { disable_system_info_ = value; }
+
+   private:
+    bool disable_clock_snapshotting_ = {};
+    bool disable_trace_stats_ = {};
+    bool disable_trace_config_ = {};
+    bool disable_system_info_ = {};
 
     // Allows to preserve unknown protobuf fields for compatibility
     // with future versions of .proto files.
@@ -391,6 +436,13 @@ class PERFETTO_EXPORT TraceConfig {
     return &data_sources_.back();
   }
 
+  const DefaultDataSource& default_data_source() const {
+    return default_data_source_;
+  }
+  DefaultDataSource* mutable_default_data_source() {
+    return &default_data_source_;
+  }
+
   uint32_t duration_ms() const { return duration_ms_; }
   void set_duration_ms(uint32_t value) { duration_ms_ = value; }
 
@@ -443,13 +495,6 @@ class PERFETTO_EXPORT TraceConfig {
   uint32_t flush_timeout_ms() const { return flush_timeout_ms_; }
   void set_flush_timeout_ms(uint32_t value) { flush_timeout_ms_ = value; }
 
-  bool disable_clock_snapshotting() const {
-    return disable_clock_snapshotting_;
-  }
-  void set_disable_clock_snapshotting(bool value) {
-    disable_clock_snapshotting_ = value;
-  }
-
   bool notify_traceur() const { return notify_traceur_; }
   void set_notify_traceur(bool value) { notify_traceur_ = value; }
 
@@ -474,6 +519,7 @@ class PERFETTO_EXPORT TraceConfig {
  private:
   std::vector<BufferConfig> buffers_;
   std::vector<DataSource> data_sources_;
+  DefaultDataSource default_data_source_ = {};
   uint32_t duration_ms_ = {};
   bool enable_extra_guardrails_ = {};
   LockdownModeOperation lockdown_mode_ = {};
@@ -486,7 +532,6 @@ class PERFETTO_EXPORT TraceConfig {
   bool deferred_start_ = {};
   uint32_t flush_period_ms_ = {};
   uint32_t flush_timeout_ms_ = {};
-  bool disable_clock_snapshotting_ = {};
   bool notify_traceur_ = {};
   TriggerConfig trigger_config_ = {};
   std::vector<std::string> activate_triggers_;
