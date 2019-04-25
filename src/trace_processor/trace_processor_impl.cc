@@ -245,8 +245,10 @@ bool TraceProcessorImpl::Parse(std::unique_ptr<uint8_t[]> data, size_t size) {
         PERFETTO_DLOG("Legacy JSON trace detected");
 #if PERFETTO_BUILDFLAG(PERFETTO_STANDALONE_BUILD)
         context_.chunk_reader.reset(new JsonTraceTokenizer(&context_));
-        context_.sorter.reset(
-            new TraceSorter(&context_, std::numeric_limits<int64_t>::max()));
+        context_.sorter.reset(new TraceSorter(
+            &context_, static_cast<int64_t>(cfg_.window_size_ns)));
+        // JSON traces have no guarantees about the order of events in them.
+        context_.sorter->DisableWindowing();
         context_.parser.reset(new JsonTraceParser(&context_));
 #else
         PERFETTO_FATAL("JSON traces only supported in standalone mode.");
