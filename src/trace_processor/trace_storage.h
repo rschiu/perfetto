@@ -74,7 +74,6 @@ enum RefType {
   kRefIrq = 3,
   kRefSoftIrq = 4,
   kRefUpid = 5,
-  kRefUtidLookupUpid = 6,
   kRefMax
 };
 
@@ -391,6 +390,10 @@ class TraceStorage {
       return size() - 1;
     }
 
+    void set_counter_id(size_t index, CounterDefinitions::Id counter_id) {
+      counter_ids_[index] = counter_id;
+    }
+
     void set_arg_set_id(uint32_t row, ArgSetId id) { arg_set_ids_[row] = id; }
 
     uint32_t size() const { return static_cast<uint32_t>(counter_ids_.size()); }
@@ -447,6 +450,8 @@ class TraceStorage {
       arg_set_ids_.emplace_back(kInvalidArgSetId);
       return static_cast<uint32_t>(instant_count() - 1);
     }
+
+    void set_ref(uint32_t row, int64_t ref) { refs_[row] = ref; }
 
     void set_arg_set_id(uint32_t row, ArgSetId id) { arg_set_ids_[row] = id; }
 

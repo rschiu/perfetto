@@ -273,6 +273,7 @@ void TraceProcessorImpl::NotifyEndOfFile() {
     return;
 
   context_.sorter->ExtractEventsForced();
+  context_.event_tracker->FlushPendingEvents();
   BuildBoundsTable(*db_, context_.storage->GetTraceTimestampBoundsNs());
 }
 
