@@ -312,6 +312,11 @@ void ProtoTraceTokenizer::ParseThreadDescriptorPacket(
       thread_descriptor_decoder.reference_thread_time_us() * 1000);
   // TODO(eseckler): Handle other thread_descriptor fields (e.g. thread
   // name/type).
+
+  // TrackEvents can be ordered arbitrarily due to out-of-order absolute
+  // timestamps and cross-packet-sequence sorting, so disable windowing for the
+  // remainder of the trace.
+  context_->sorter->DisableWindowing();
 }
 
 void ProtoTraceTokenizer::ParseTrackEventPacket(
