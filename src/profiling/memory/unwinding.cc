@@ -56,6 +56,8 @@ namespace perfetto {
 namespace profiling {
 namespace {
 
+constexpr size_t kSendWindow = 4096;
+
 constexpr size_t kMaxFrames = 1000;
 
 // We assume average ~300us per unwind. If we handle up to 1000 unwinds, this
@@ -377,10 +379,12 @@ void UnwindingWorker::HandleHandoffSocket(HandoffData handoff_data) {
   UnwindingMetadata metadata(peer_pid,
                              std::move(handoff_data.fds[kHandshakeMaps]),
                              std::move(handoff_data.fds[kHandshakeMem]));
-  ClientData client_data{
-      handoff_data.data_source_instance_id, std::move(sock),
-      std::move(metadata), std::move(handoff_data.shmem),
-  };
+
+  TransmitWindowSender sender(kSendWindow);
+
+  ClientData client_data{handoff_data.data_source_instance_id, std::move(sock),
+                         std::move(metadata), std::move(handoff_data.shmem),
+                         std::move(sender)};
   client_data_.emplace(peer_pid, std::move(client_data));
 }
 
@@ -393,6 +397,22 @@ void UnwindingWorker::PostDisconnectSocket(pid_t pid) {
 
 void UnwindingWorker::HandleDisconnectSocket(pid_t pid) {
   client_data_.erase(pid);
+}
+
+void UnwindingWorker::PostAcknowledgeTransmitWindow(pid_t pid, size_t size) {
+  // We do not need to use a WeakPtr here because the task runner will not
+  // outlive its UnwindingWorker.
+  thread_task_runner_.get()->PostTask(
+      [this, pid, size] { HandleAcknowledgeTransmitWindow(pid, size); });
+}
+
+void UnwindingWorker::HandleAcknowledgeTransmitWindow(pid_t pid, size_t size) {
+  auto it = client_data_.find(pid);
+  if (it == client_data_.end())
+    return;
+
+  ClientData& client_data = it->second;
+  client_data.transmit_window_sender.Acknowledge(size);
 }
 
 UnwindingWorker::Delegate::~Delegate() = default;

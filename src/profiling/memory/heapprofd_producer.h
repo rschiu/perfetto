@@ -34,10 +34,13 @@
 #include "src/profiling/memory/bookkeeping.h"
 #include "src/profiling/memory/proc_utils.h"
 #include "src/profiling/memory/system_property.h"
+#include "src/profiling/memory/transmit_window.h"
 #include "src/profiling/memory/unwinding.h"
 
 namespace perfetto {
 namespace profiling {
+
+constexpr auto kRecvWindow = 1024;
 
 struct Process {
   pid_t pid;
@@ -81,7 +84,9 @@ enum class HeapprofdMode { kCentral, kChild };
 // TODO(fmayer||rsavitski): cover interesting invariants/structure of the
 // implementation (e.g. number of data sources in child mode), including
 // threading structure.
-class HeapprofdProducer : public Producer, public UnwindingWorker::Delegate {
+class HeapprofdProducer : public Producer,
+                          public UnwindingWorker::Delegate,
+                          TransmitWindowReceiver::Delegate {
  public:
   friend class SocketDelegate;
 
@@ -127,6 +132,9 @@ class HeapprofdProducer : public Producer, public UnwindingWorker::Delegate {
                               pid_t,
                               SharedRingBuffer::Stats) override;
 
+  // TransmitWindowReceiver::Delegate impl:
+  void AcknowledgeTransmitWindow(pid_t pid, size_t size) override;
+
   void HandleAllocRecord(AllocRecord);
   void HandleFreeRecord(FreeRecord);
   void HandleSocketDisconnected(DataSourceInstanceID,
@@ -157,7 +165,9 @@ class HeapprofdProducer : public Producer, public UnwindingWorker::Delegate {
   };
 
   struct ProcessState {
-    ProcessState(GlobalCallstackTrie* callsites) : heap_tracker(callsites) {}
+    ProcessState(pid_t pid, HeapprofdProducer* self)
+        : heap_tracker(&self->callsites_),
+          transmit_window_receiver(pid, self, kRecvWindow) {}
     bool disconnected = false;
     bool buffer_overran = false;
     bool buffer_corrupted = false;
@@ -169,6 +179,7 @@ class HeapprofdProducer : public Producer, public UnwindingWorker::Delegate {
     uint64_t total_unwinding_time_us = 0;
     LogHistogram unwinding_time_us;
     HeapTracker heap_tracker;
+    TransmitWindowReceiver transmit_window_receiver;
   };
 
   struct DataSource {

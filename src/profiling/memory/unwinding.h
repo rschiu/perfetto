@@ -31,6 +31,7 @@
 #include "perfetto/base/thread_task_runner.h"
 #include "perfetto/tracing/core/basic_types.h"
 #include "src/profiling/memory/bookkeeping.h"
+#include "src/profiling/memory/transmit_window.h"
 #include "src/profiling/memory/unwound_messages.h"
 #include "src/profiling/memory/wire_protocol.h"
 
@@ -166,7 +167,8 @@ class UnwindingWorker : public base::UnixSocket::EventListener {
   }
   void OnDataAvailable(base::UnixSocket* self) override;
 
- public:
+  void PostAcknowledgeTransmitWindow(pid_t pid, size_t size);
+
   // static and public for testing/fuzzing
   static void HandleBuffer(const SharedRingBuffer::Buffer& buf,
                            UnwindingMetadata* unwinding_metadata,
@@ -177,6 +179,7 @@ class UnwindingWorker : public base::UnixSocket::EventListener {
  private:
   void HandleHandoffSocket(HandoffData data);
   void HandleDisconnectSocket(pid_t pid);
+  void HandleAcknowledgeTransmitWindow(pid_t pid, size_t size);
 
   void HandleUnwindBatch(pid_t);
 
@@ -185,6 +188,7 @@ class UnwindingWorker : public base::UnixSocket::EventListener {
     std::unique_ptr<base::UnixSocket> sock;
     UnwindingMetadata metadata;
     SharedRingBuffer shmem;
+    TransmitWindowSender transmit_window_sender;
   };
 
   // Task runner with a dedicated thread. Keep at the start of the data member

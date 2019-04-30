@@ -663,8 +663,8 @@ void HeapprofdProducer::SocketDelegate::OnDataAvailable(
     }
 
     DataSource& data_source = ds_it->second;
-    data_source.process_states.emplace(self->peer_pid(),
-                                       &producer_->callsites_);
+    data_source.process_states.emplace(
+        self->peer_pid(), ProcessState(self->peer_pid(), producer_));
 
     PERFETTO_DLOG("%d: Received FDs.", self->peer_pid());
     int raw_fd = pending_process.shmem.fd();
@@ -810,6 +810,8 @@ void HeapprofdProducer::HandleAllocRecord(AllocRecord alloc_rec) {
   ProcessState& process_state = process_state_it->second;
   HeapTracker& heap_tracker = process_state.heap_tracker;
 
+  process_state.transmit_window_receiver.Receive();
+
   if (alloc_rec.error)
     process_state.unwinding_errors++;
   if (alloc_rec.reparsed_map)
@@ -840,6 +842,8 @@ void HeapprofdProducer::HandleFreeRecord(FreeRecord free_rec) {
 
   ProcessState& process_state = process_state_it->second;
   HeapTracker& heap_tracker = process_state.heap_tracker;
+
+  process_state.transmit_window_receiver.Receive();
 
   const FreeBatchEntry* entries = free_batch.entries;
   uint64_t num_entries = free_batch.num_entries;
@@ -874,6 +878,10 @@ void HeapprofdProducer::HandleSocketDisconnected(
   // TODO(fmayer): Dump on process disconnect rather than data source
   // destruction. This prevents us needing to hold onto the bookkeeping data
   // after the process disconnected.
+}
+
+void HeapprofdProducer::AcknowledgeTransmitWindow(pid_t pid, size_t size) {
+  UnwinderForPID(pid).PostAcknowledgeTransmitWindow(pid, size);
 }
 
 }  // namespace profiling

@@ -111,6 +111,8 @@ source_set("daemon") {
     "interner.h",
     "system_property.cc",
     "system_property.h",
+    "transmit_window.cc",
+    "transmit_window.h",
     "unwinding.cc",
     "unwinding.h",
     "unwound_messages.h",
@@ -158,6 +160,7 @@ source_set("unittests") {
     "proc_utils_unittest.cc",
     "sampler_unittest.cc",
     "system_property_unittest.cc",
+    "transmit_window_unittest.cc",
     "unwinding_unittest.cc",
     "wire_protocol_unittest.cc",
   ]
