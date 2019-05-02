@@ -91,11 +91,14 @@ class ChromeSliceTrack extends Track<Config, Data> {
       const rectXStart = Math.max(timeScale.timeToPx(tStart), 0);
       const rectXEnd = Math.min(timeScale.timeToPx(tEnd), pxEnd);
       const rectWidth = rectXEnd - rectXStart;
-      if (rectWidth < 0.1) continue;
+      // if (rectWidth < 0.1) continue;
       const rectYStart = TRACK_PADDING + depth * SLICE_HEIGHT;
 
       const hovered = titleId === this.hoveredTitleId;
-      const hue = hash(cat);
+      let hue = hash(cat);
+      if (cat === 'x') {
+        hue = 360;
+      }
       const saturation = Math.min(20 + depth * 10, 70);
       ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${hovered ? 30 : 65}%)`;
       ctx.fillRect(rectXStart, rectYStart, rectWidth, SLICE_HEIGHT);
