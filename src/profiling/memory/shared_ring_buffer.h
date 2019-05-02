@@ -100,7 +100,11 @@ class SharedRingBuffer {
   Buffer BeginWrite(const ScopedSpinlock& spinlock, size_t size);
   void EndWrite(Buffer buf);
 
-  Buffer BeginRead();
+  Buffer BeginRead() {
+    ScopedSpinlock spinlock(&meta_->spinlock, ScopedSpinlock::Mode::Blocking);
+    return BeginRead(spinlock);
+  }
+  Buffer BeginRead(const ScopedSpinlock& spinlock);
   void EndRead(Buffer);
 
   Stats GetStats(ScopedSpinlock& spinlock) {

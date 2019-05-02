@@ -220,8 +220,9 @@ void SharedRingBuffer::EndWrite(Buffer buf) {
       static_cast<uint32_t>(buf.size), std::memory_order_release);
 }
 
-SharedRingBuffer::Buffer SharedRingBuffer::BeginRead() {
-  ScopedSpinlock spinlock(&meta_->spinlock, ScopedSpinlock::Mode::Blocking);
+SharedRingBuffer::Buffer SharedRingBuffer::BeginRead(
+    const ScopedSpinlock& spinlock) {
+  PERFETTO_DCHECK(spinlock.locked());
 
   base::Optional<PointerPositions> opt_pos = GetPointerPositions(spinlock);
   if (!opt_pos) {

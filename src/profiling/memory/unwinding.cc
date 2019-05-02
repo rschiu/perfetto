@@ -301,9 +301,16 @@ void UnwindingWorker::HandleUnwindBatch(pid_t peer_pid) {
 
   size_t i;
   for (i = 0; i < kUnwindBatchSize; ++i) {
-    // TODO(fmayer): Allow spinlock acquisition to fail and repost Task if it
-    // did.
-    buf = shmem.BeginRead();
+    ScopedSpinlock s = shmem.AcquireLock(ScopedSpinlock::Mode::Try);
+    if (PERFETTO_UNLIKELY(!s.locked())) {
+      PERFETTO_ELOG("Failed to acquire read spinlock. Disconnecting.");
+      OnDisconnect(client_data.sock.get());
+      // OnDisconnect invalidates our reference to client_data so we have to
+      // disconnect.
+      return;
+    }
+
+    buf = shmem.BeginRead(s);
     if (!buf)
       break;
     HandleBuffer(buf, &client_data.metadata,
