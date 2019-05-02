@@ -109,6 +109,15 @@ class HeapProfileTracker {
  private:
   void AddAllocation(ProfileIndex, const SourceAllocation&);
 
+  int64_t FindMapping(TraceStorage::HeapProfileMappings::Row);
+  void StoreMapping(TraceStorage::HeapProfileMappings::Row, int64_t row);
+
+  int64_t FindFrame(TraceStorage::HeapProfileFrames::Row);
+  void StoreFrame(TraceStorage::HeapProfileFrames::Row, int64_t row);
+
+  int64_t FindCallsite(TraceStorage::HeapProfileCallsites::Row);
+  void StoreCallsite(TraceStorage::HeapProfileCallsites::Row, int64_t row);
+
   base::Optional<StringId> FindString(ProfileIndex, SourceStringId);
 
   std::unordered_map<std::pair<ProfileIndex, SourceStringId>, StringId>
@@ -120,6 +129,12 @@ class HeapProfileTracker {
       callstacks_from_frames_;
   std::unordered_map<std::pair<ProfileIndex, SourceCallstackId>, int64_t>
       callstacks_;
+
+  std::unordered_map<TraceStorage::HeapProfileMappings::Row, int64_t>
+      mapping_idx_;
+  std::unordered_map<TraceStorage::HeapProfileFrames::Row, int64_t> frame_idx_;
+  std::unordered_map<TraceStorage::HeapProfileCallsites::Row, int64_t>
+      callsite_idx_;
 
   std::vector<std::pair<ProfileIndex, SourceAllocation>> pending_allocs_;
 
