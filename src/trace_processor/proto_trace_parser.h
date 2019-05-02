@@ -51,7 +51,14 @@ inline bool operator==(const SystraceTracePoint& x,
          std::tie(y.phase, y.tgid, y.name, y.value);
 }
 
-bool ParseSystraceTracePoint(base::StringView, SystraceTracePoint* out);
+enum class SystraceParseResult {
+  kParsingFailure = 0,
+  kTracePointUnsupported,
+  kParsingSuccess
+};
+
+SystraceParseResult ParseSystraceTracePoint(base::StringView,
+                                            SystraceTracePoint* out);
 
 class ProtoTraceParser : public TraceParser {
  public:
