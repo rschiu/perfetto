@@ -158,6 +158,19 @@ if (perfetto_build_standalone || perfetto_build_with_android) {
     ]
   }
 
+  executable("producer_api_test") {
+    deps = [
+      ":api",
+      "../../gn:default_deps",
+      "../../protos/perfetto/config:lite",
+      "../../protos/perfetto/trace:lite",
+      "../base",
+    ]
+    sources = [
+      "api_impl/producer_api_test.cc",
+    ]
+  }
+
   source_set("tracing_benchmarks") {
     testonly = true
     deps = [
@@ -181,6 +194,7 @@ if (perfetto_build_standalone || perfetto_build_with_android) {
     ]
     sources = [
       "api_impl/consumer_api.cc",
+      "api_impl/producer_api.cc",
     ]
   }
 }
