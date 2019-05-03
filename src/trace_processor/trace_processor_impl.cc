@@ -18,6 +18,7 @@
 
 #include <inttypes.h>
 #include <algorithm>
+#include <fstream>
 #include <functional>
 
 #include "perfetto/base/logging.h"
@@ -31,6 +32,7 @@
 #include "src/trace_processor/counter_definitions_table.h"
 #include "src/trace_processor/counter_values_table.h"
 #include "src/trace_processor/event_tracker.h"
+#include "src/trace_processor/export_json.h"
 #include "src/trace_processor/fuchsia_trace_parser.h"
 #include "src/trace_processor/fuchsia_trace_tokenizer.h"
 #include "src/trace_processor/heap_profile_tracker.h"
@@ -191,6 +193,24 @@ void CreateMetricsFunctions(TraceProcessorImpl* tp, sqlite3* db) {
   }
 }
 
+void ExportJson(sqlite3_context* ctx, int /*argc*/, sqlite3_value** argv) {
+  TraceStorage* storage = static_cast<TraceStorage*>(sqlite3_user_data(ctx));
+  const char* filename =
+      reinterpret_cast<const char*>(sqlite3_value_text(argv[0]));
+  std::ofstream output(filename);
+
+  json::ExportJson(storage, output);
+}
+
+void CreateJsonExportFunction(TraceStorage* ts, sqlite3* db) {
+  auto ret = sqlite3_create_function_v2(db, "EXPORT_JSON", 1, SQLITE_UTF8, ts,
+                                        ExportJson, nullptr, nullptr,
+                                        sqlite_utils::kSqliteStatic);
+  if (ret) {
+    PERFETTO_ELOG("Error initializing EXPORT_JSON");
+  }
+}
+
 // Fuchsia traces have a magic number as documented here:
 // https://fuchsia.googlesource.com/fuchsia/+/HEAD/docs/development/tracing/trace-format/README.md#magic-number-record-trace-info-type-0
 constexpr uint64_t kFuchsiaMagicNumber = 0x0016547846040010;
@@ -232,6 +252,8 @@ TraceProcessorImpl::TraceProcessorImpl(const Config& cfg) : cfg_(cfg) {
   context_.syscall_tracker.reset(new SyscallTracker(&context_));
   context_.clock_tracker.reset(new ClockTracker(&context_));
   context_.heap_profile_tracker.reset(new HeapProfileTracker(&context_));
+
+  CreateJsonExportFunction(this->context_.storage.get(), db);
 
   ArgsTable::RegisterTable(*db_, context_.storage.get());
   ProcessTable::RegisterTable(*db_, context_.storage.get());

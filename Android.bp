@@ -3208,6 +3208,7 @@ cc_binary_host {
     "src/trace_processor/counter_definitions_table.cc",
     "src/trace_processor/counter_values_table.cc",
     "src/trace_processor/event_tracker.cc",
+    "src/trace_processor/export_json.cc",
     "src/trace_processor/filtered_row_index.cc",
     "src/trace_processor/ftrace_descriptors.cc",
     "src/trace_processor/ftrace_utils.cc",

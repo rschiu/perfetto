@@ -58,6 +58,8 @@ source_set("lib") {
     "counter_values_table.h",
     "event_tracker.cc",
     "event_tracker.h",
+    "export_json.cc",
+    "export_json.h",
     "filtered_row_index.cc",
     "filtered_row_index.h",
     "ftrace_descriptors.cc",
@@ -219,6 +221,7 @@ source_set("unittests") {
   sources = [
     "clock_tracker_unittest.cc",
     "event_tracker_unittest.cc",
+    "export_json_unittest.cc",
     "filtered_row_index_unittest.cc",
     "ftrace_utils_unittest.cc",
     "heap_profile_tracker_unittest.cc",
