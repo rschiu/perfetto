@@ -58,8 +58,9 @@ bool GetProcFile(pid_t pid, const char* file, char* filename_buf, size_t size) {
 
 bool NormalizeCmdLine(char* cmdline, size_t size, std::string* name) {
   char* first_arg = static_cast<char*>(memchr(cmdline, '\0', size));
-  if (first_arg == nullptr) {
+  if (first_arg == nullptr || first_arg == cmdline + size - 1) {
     PERFETTO_DLOG("Overflow reading cmdline");
+    errno = EOVERFLOW;
     return false;
   }
   // For consistency with what we do with Java app cmdlines, trim everything
@@ -74,6 +75,7 @@ bool NormalizeCmdLine(char* cmdline, size_t size, std::string* name) {
   if (start == first_arg) {
     // The first argument ended in a slash.
     PERFETTO_DLOG("cmdline ends in /");
+    errno = EINVAL;
     return false;
   } else if (start == nullptr) {
     start = cmdline;
@@ -113,14 +115,10 @@ bool GetCmdlineForPID(pid_t pid, std::string* name) {
     PERFETTO_DLOG("Failed to open %s", filename.c_str());
     return false;
   }
-  char cmdline[128];
+  char cmdline[512];
   ssize_t rd = read(*fd, cmdline, sizeof(cmdline) - 1);
   if (rd == -1) {
     PERFETTO_DLOG("Failed to read %s", filename.c_str());
-    return false;
-  }
-  if (rd == sizeof(cmdline) - 1) {
-    PERFETTO_DLOG("Overflow reading cmdline");
     return false;
   }
   cmdline[rd] = '\0';
