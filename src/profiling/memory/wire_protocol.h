@@ -39,11 +39,18 @@ class UnixSocketRaw;
 
 namespace profiling {
 
+enum TimestampClockType : uint8_t {
+  kNoTimestamp = 0,
+  kMonotonic = 1,
+  kMonotonicCoarse = 2,
+};
+
 struct ClientConfiguration {
   // On average, sample one allocation every interval bytes,
   // If interval == 1, sample every allocation.
   // Must be >= 1.
   uint64_t interval;
+  TimestampClockType timestamp_clock = kMonotonicCoarse;
 };
 
 // Types needed for the wire format used for communication between the client
@@ -96,7 +103,7 @@ struct AllocMetadata {
   uint64_t stack_pointer;
   // Offset of the data at stack_pointer from the start of this record.
   uint64_t stack_pointer_offset;
-  uint64_t clock_monotonic_coarse_timestamp;
+  uint64_t clock_timestamp;
   alignas(uint64_t) char register_data[kMaxRegisterDataSize];
   // CPU architecture of the client. This determines the size of the
   // register data that follows this struct.
@@ -110,7 +117,7 @@ struct FreeBatchEntry {
 
 struct FreeBatch {
   uint64_t num_entries;
-  uint64_t clock_monotonic_coarse_timestamp;
+  uint64_t clock_timestamp;
   FreeBatchEntry entries[kFreeBatchSize];
 
   FreeBatch() { num_entries = 0; }

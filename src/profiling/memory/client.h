@@ -99,6 +99,8 @@ class Client {
   bool FlushFreesLocked();
   bool SendControlSocketByte();
 
+  uint64_t GetTimestamp();
+
   ClientConfiguration client_config_;
   // sampler_ operations are not thread-safe.
   Sampler sampler_;

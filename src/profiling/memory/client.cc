@@ -273,13 +273,7 @@ bool Client::RecordMalloc(uint64_t alloc_size,
   metadata.sequence_number =
       1 + sequence_number_.fetch_add(1, std::memory_order_acq_rel);
 
-  struct timespec ts;
-  if (clock_gettime(CLOCK_MONOTONIC_COARSE, &ts) == 0) {
-    metadata.clock_monotonic_coarse_timestamp =
-        static_cast<uint64_t>(base::FromPosixTimespec(ts).count());
-  } else {
-    metadata.clock_monotonic_coarse_timestamp = 0;
-  }
+  metadata.clock_timestamp = GetTimestamp();
 
   WireMessage msg{};
   msg.record_type = RecordType::Malloc;
@@ -323,19 +317,33 @@ bool Client::FlushFreesLocked() {
   WireMessage msg = {};
   msg.record_type = RecordType::Free;
   msg.free_header = &free_batch_;
-  struct timespec ts;
-  if (clock_gettime(CLOCK_MONOTONIC_COARSE, &ts) == 0) {
-    free_batch_.clock_monotonic_coarse_timestamp =
-        static_cast<uint64_t>(base::FromPosixTimespec(ts).count());
-  } else {
-    free_batch_.clock_monotonic_coarse_timestamp = 0;
-  }
+  free_batch_.clock_timestamp = GetTimestamp();
 
   if (!SendWireMessage(&shmem_, msg)) {
     PERFETTO_PLOG("Failed to write to shared ring buffer (FlushFreesLocked).");
     return false;
   }
   return SendControlSocketByte();
+}
+
+uint64_t Client::GetTimestamp() {
+  clockid_t clock;
+  switch (client_config_.timestamp_clock) {
+    case kMonotonic:
+      clock = CLOCK_MONOTONIC;
+      break;
+    case kMonotonicCoarse:
+      clock = CLOCK_MONOTONIC_COARSE;
+      break;
+    case kNoTimestamp:
+      return 0;
+  }
+
+  struct timespec ts;
+  if (clock_gettime(clock, &ts) == 0) {
+    return static_cast<uint64_t>(base::FromPosixTimespec(ts).count());
+  }
+  return 0;
 }
 
 bool Client::SendControlSocketByte() {
