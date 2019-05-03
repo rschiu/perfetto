@@ -96,6 +96,8 @@ data_sources {{
 }}
 
 duration_ms: {duration}
+write_into_file: true
+file_write_period_ms:  {file_write_period_ms}
 flush_timeout_ms: 30000
 '''
 
@@ -192,10 +194,12 @@ def main(argv):
   if args.continuous_dump:
     continuous_dump_cfg = CONTINUOUS_DUMP.format(
         dump_interval=args.continuous_dump)
+  file_write_period_ms = args.continuous_dump
   cfg = CFG.format(interval=args.interval,
                    duration=args.duration, target_cfg=target_cfg,
                    continuous_dump_cfg=continuous_dump_cfg,
-                   shmem_size=args.shmem_size)
+                   shmem_size=args.shmem_size,
+                   file_write_period_ms=file_write_period_ms)
 
   if args.disable_selinux:
     enforcing = subprocess.check_output(['adb', 'shell', 'getenforce'])
