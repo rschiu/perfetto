@@ -16,9 +16,16 @@ import("perfetto.gni")
 
 if (perfetto_build_standalone) {
   import("//gn/standalone/fuzzer.gni")
-} else {
+} else if (build_with_chromium) {
   # TODO: integrate fuzzer support for chromium builds.
   # For now just create a dummy template to avoid GN warnings.
+  import("//testing/libfuzzer/fuzzer_test.gni")
+  template("perfetto_fuzzer_test") {
+    forward_variables_from(invoker, "*")
+    fuzzer_test("perfetto_" + target_name) {
+    }
+  }
+} else {
   template("perfetto_fuzzer_test") {
     not_needed(invoker, "*")
     group(target_name) {

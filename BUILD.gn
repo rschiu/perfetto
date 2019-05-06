@@ -305,6 +305,16 @@ if (perfetto_build_standalone) {
       "test:end_to_end_shared_memory_fuzzer",
     ]
   }
+} else if (build_with_chromium) {
+  group("fuzzers") {
+    testonly = true
+    deps = [
+      "src/protozero:perfetto_protozero_decoder_fuzzer",
+    ]
+    if (is_linux) {
+      deps += [ "src/ipc:perfetto_buffered_frame_deserializer_fuzzer" ]
+    }
+  }
 }
 
 # WARNING: this builds correctly only when using the generated Android.bp.
