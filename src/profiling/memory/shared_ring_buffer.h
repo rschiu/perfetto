@@ -31,6 +31,8 @@
 namespace perfetto {
 namespace profiling {
 
+constexpr auto kMetaPageSize = base::kPageSize;
+
 // A concurrent, multi-writer single-reader ring buffer FIFO, based on a
 // circular buffer over shared memory. It has similar semantics to a SEQ_PACKET
 // + O_NONBLOCK socket, specifically:
@@ -131,6 +133,12 @@ class SharedRingBuffer {
     Stats stats;
   };
 
+  static constexpr size_t kUserMetadataSize =
+      kMetaPageSize - sizeof(MetadataPage);
+  char* GetUserMetadata() {
+    return reinterpret_cast<char*>(meta_) + sizeof(MetadataPage);
+  }
+
  private:
   struct PointerPositions {
     uint64_t read_pos;
@@ -148,7 +156,6 @@ class SharedRingBuffer {
 
   void Initialize(base::ScopedFile mem_fd);
   bool IsCorrupt(const PointerPositions& pos);
-
   inline base::Optional<PointerPositions> GetPointerPositions(
       const ScopedSpinlock& lock) {
     PERFETTO_DCHECK(lock.locked());

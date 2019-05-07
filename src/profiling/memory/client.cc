@@ -220,6 +220,7 @@ Client::Client(base::UnixSocketRaw sock,
       sock_(std::move(sock)),
       main_thread_stack_base_(main_thread_stack_base),
       shmem_(std::move(shmem)),
+      user_metadata(reinterpret_cast<UserMetadata*>(shmem_.GetUserMetadata())),
       pid_at_creation_(pid_at_creation) {}
 
 const char* Client::GetStackBase() {

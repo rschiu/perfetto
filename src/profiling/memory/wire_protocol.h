@@ -21,6 +21,9 @@
 #define SRC_PROFILING_MEMORY_WIRE_PROTOCOL_H_
 
 #include <inttypes.h>
+
+#include <atomic>
+
 #include <unwindstack/Elf.h>
 #include <unwindstack/UserArm.h>
 #include <unwindstack/UserArm64.h>
@@ -101,6 +104,11 @@ struct AllocMetadata {
   // CPU architecture of the client. This determines the size of the
   // register data that follows this struct.
   unwindstack::ArchEnum arch;
+};
+
+struct UserMetadata {
+  std::atomic<uint64_t> unwind_time_us;
+  std::atomic<uint64_t> unwind_count;
 };
 
 struct FreeBatchEntry {

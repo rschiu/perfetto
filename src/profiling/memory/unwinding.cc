@@ -306,9 +306,15 @@ void UnwindingWorker::HandleUnwindBatch(pid_t peer_pid) {
     buf = shmem.BeginRead();
     if (!buf)
       break;
-    HandleBuffer(buf, &client_data.metadata,
-                 client_data.data_source_instance_id,
-                 client_data.sock->peer_pid(), delegate_);
+    uint64_t unwinding_time = HandleBuffer(
+        buf, &client_data.metadata, client_data.data_source_instance_id,
+        client_data.sock->peer_pid(), delegate_);
+    if (unwinding_time) {
+      client_data.user_metadata->unwind_time_us.fetch_add(
+          unwinding_time, std::memory_order_relaxed);
+      client_data.user_metadata->unwind_count.fetch_add(
+          1, std::memory_order_release);
+    }
     shmem.EndRead(std::move(buf));
   }
 
@@ -319,18 +325,19 @@ void UnwindingWorker::HandleUnwindBatch(pid_t peer_pid) {
 }
 
 // static
-void UnwindingWorker::HandleBuffer(const SharedRingBuffer::Buffer& buf,
-                                   UnwindingMetadata* unwinding_metadata,
-                                   DataSourceInstanceID data_source_instance_id,
-                                   pid_t peer_pid,
-                                   Delegate* delegate) {
+uint64_t UnwindingWorker::HandleBuffer(
+    const SharedRingBuffer::Buffer& buf,
+    UnwindingMetadata* unwinding_metadata,
+    DataSourceInstanceID data_source_instance_id,
+    pid_t peer_pid,
+    Delegate* delegate) {
   WireMessage msg;
   // TODO(fmayer): standardise on char* or uint8_t*.
   // char* has stronger guarantees regarding aliasing.
   // see https://timsong-cpp.github.io/cppwp/n3337/basic.lval#10.8
   if (!ReceiveWireMessage(reinterpret_cast<char*>(buf.data), buf.size, &msg)) {
     PERFETTO_DFATAL("Failed to receive wire message.");
-    return;
+    return 0;
   }
 
   if (msg.record_type == RecordType::Malloc) {
@@ -343,6 +350,7 @@ void UnwindingWorker::HandleBuffer(const SharedRingBuffer::Buffer& buf,
     rec.unwinding_time_us = static_cast<uint64_t>(
         ((base::GetWallTimeNs() / 1000) - start_time_us).count());
     delegate->PostAllocRecord(std::move(rec));
+    return rec.unwinding_time_us;
   } else if (msg.record_type == RecordType::Free) {
     FreeRecord rec;
     rec.pid = peer_pid;
@@ -353,6 +361,7 @@ void UnwindingWorker::HandleBuffer(const SharedRingBuffer::Buffer& buf,
   } else {
     PERFETTO_DFATAL("Invalid record type.");
   }
+  return 0;
 }
 
 void UnwindingWorker::PostHandoffSocket(HandoffData handoff_data) {
@@ -377,10 +386,13 @@ void UnwindingWorker::HandleHandoffSocket(HandoffData handoff_data) {
   UnwindingMetadata metadata(peer_pid,
                              std::move(handoff_data.fds[kHandshakeMaps]),
                              std::move(handoff_data.fds[kHandshakeMem]));
-  ClientData client_data{
-      handoff_data.data_source_instance_id, std::move(sock),
-      std::move(metadata), std::move(handoff_data.shmem),
-  };
+  ClientData client_data{handoff_data.data_source_instance_id, std::move(sock),
+                         std::move(metadata), std::move(handoff_data.shmem),
+                         nullptr};
+  static_assert(sizeof(UserMetadata) <= SharedRingBuffer::kUserMetadataSize,
+                "UserMetadata must fit on page.");
+  client_data.user_metadata =
+      reinterpret_cast<UserMetadata*>(client_data.shmem.GetUserMetadata());
   client_data_.emplace(peer_pid, std::move(client_data));
 }
 

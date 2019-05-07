@@ -168,11 +168,11 @@ class UnwindingWorker : public base::UnixSocket::EventListener {
 
  public:
   // static and public for testing/fuzzing
-  static void HandleBuffer(const SharedRingBuffer::Buffer& buf,
-                           UnwindingMetadata* unwinding_metadata,
-                           DataSourceInstanceID data_source_instance_id,
-                           pid_t peer_pid,
-                           Delegate* delegate);
+  static uint64_t HandleBuffer(const SharedRingBuffer::Buffer& buf,
+                               UnwindingMetadata* unwinding_metadata,
+                               DataSourceInstanceID data_source_instance_id,
+                               pid_t peer_pid,
+                               Delegate* delegate);
 
  private:
   void HandleHandoffSocket(HandoffData data);
@@ -185,6 +185,7 @@ class UnwindingWorker : public base::UnixSocket::EventListener {
     std::unique_ptr<base::UnixSocket> sock;
     UnwindingMetadata metadata;
     SharedRingBuffer shmem;
+    UserMetadata* user_metadata;
   };
 
   // Task runner with a dedicated thread. Keep at the start of the data member

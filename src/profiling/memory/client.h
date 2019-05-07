@@ -99,6 +99,8 @@ class Client {
   bool FlushFreesLocked();
   bool SendControlSocketByte();
 
+  uint64_t GetBackoff();
+
   ClientConfiguration client_config_;
   // sampler_ operations are not thread-safe.
   Sampler sampler_;
@@ -111,6 +113,7 @@ class Client {
   const char* main_thread_stack_base_{nullptr};
   std::atomic<uint64_t> sequence_number_{0};
   SharedRingBuffer shmem_;
+  UserMetadata* user_metadata;
 
   // Used to detect (during the slow path) the situation where the process has
   // forked during profiling, and is performing malloc operations in the child.

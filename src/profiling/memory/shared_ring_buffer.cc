@@ -40,7 +40,6 @@ namespace profiling {
 
 namespace {
 
-constexpr auto kMetaPageSize = base::kPageSize;
 constexpr auto kAlignment = 8;  // 64 bits to use aligned memcpy().
 constexpr auto kHeaderSize = kAlignment;
 constexpr auto kGuardSize = base::kPageSize * 1024 * 16;  // 64 MB.
