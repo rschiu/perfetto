@@ -281,9 +281,16 @@ message DataSourceConfig {
 // to reflect changes in the corresponding C++ headers.
 
 message FtraceConfig {
+  message FtraceEventOption {
+    optional uint32 event_id = 1;
+    repeated uint32 enabled_fields = 2;
+  }
+
   repeated string ftrace_events = 1;
   repeated string atrace_categories = 2;
   repeated string atrace_apps = 3;
+  repeated FtraceEventOption ftrace_event_options = 4;
+
   // *Per-CPU* buffer size.
   optional uint32 buffer_size_kb = 10;
   optional uint32 drain_period_ms = 11;

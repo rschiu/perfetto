@@ -119,6 +119,16 @@ class ProtoTranslationTable {
     return &events_.at(id);
   }
 
+  const Event* GetEventByProtoId(uint32_t id) const {
+    for (const Event& event : events_) {
+      if (!event.ftrace_event_id)
+        continue;
+      if (event.proto_field_id == id)
+        return &event;
+    }
+    return nullptr;
+  }
+
   size_t EventToFtraceId(const GroupAndName& group_and_name) const {
     if (!group_and_name_to_event_.count(group_and_name))
       return 0;
@@ -184,15 +194,22 @@ class EventFilter {
 
   void AddEnabledEvent(size_t ftrace_event_id);
   void DisableEvent(size_t ftrace_event_id);
+
+  void DisableAllFields(size_t ftrace_event_id);
+  void EnableField(size_t ftrace_event_id, size_t field);
+
   bool IsEventEnabled(size_t ftrace_event_id) const;
+  bool IsFieldEnabled(size_t ftrace_event_id, size_t field) const;
   std::set<size_t> GetEnabledEvents() const;
   void EnableEventsFrom(const EventFilter&);
 
  private:
   EventFilter(const EventFilter&) = delete;
   EventFilter& operator=(const EventFilter&) = delete;
+  void MaybeExpandStorage(size_t ftrace_event_id);
 
   std::vector<bool> enabled_ids_;
+  std::vector<uint16_t> enabled_fields_;
 };
 
 }  // namespace perfetto

@@ -44,6 +44,7 @@ bool FtraceConfig::operator==(const FtraceConfig& other) const {
   return (ftrace_events_ == other.ftrace_events_) &&
          (atrace_categories_ == other.atrace_categories_) &&
          (atrace_apps_ == other.atrace_apps_) &&
+         (ftrace_event_options_ == other.ftrace_event_options_) &&
          (buffer_size_kb_ == other.buffer_size_kb_) &&
          (drain_period_ms_ == other.drain_period_ms_);
 }
@@ -77,6 +78,12 @@ void FtraceConfig::FromProto(const perfetto::protos::FtraceConfig& proto) {
                   "size mismatch");
     atrace_apps_.back() =
         static_cast<decltype(atrace_apps_)::value_type>(field);
+  }
+
+  ftrace_event_options_.clear();
+  for (const auto& field : proto.ftrace_event_options()) {
+    ftrace_event_options_.emplace_back();
+    ftrace_event_options_.back().FromProto(field);
   }
 
   static_assert(sizeof(buffer_size_kb_) == sizeof(proto.buffer_size_kb()),
@@ -113,6 +120,11 @@ void FtraceConfig::ToProto(perfetto::protos::FtraceConfig* proto) const {
     static_assert(sizeof(it) == sizeof(proto->atrace_apps(0)), "size mismatch");
   }
 
+  for (const auto& it : ftrace_event_options_) {
+    auto* entry = proto->add_ftrace_event_options();
+    it.ToProto(entry);
+  }
+
   static_assert(sizeof(buffer_size_kb_) == sizeof(proto->buffer_size_kb()),
                 "size mismatch");
   proto->set_buffer_size_kb(
@@ -122,6 +134,60 @@ void FtraceConfig::ToProto(perfetto::protos::FtraceConfig* proto) const {
                 "size mismatch");
   proto->set_drain_period_ms(
       static_cast<decltype(proto->drain_period_ms())>(drain_period_ms_));
+  *(proto->mutable_unknown_fields()) = unknown_fields_;
+}
+
+FtraceConfig::FtraceEventOption::FtraceEventOption() = default;
+FtraceConfig::FtraceEventOption::~FtraceEventOption() = default;
+FtraceConfig::FtraceEventOption::FtraceEventOption(
+    const FtraceConfig::FtraceEventOption&) = default;
+FtraceConfig::FtraceEventOption& FtraceConfig::FtraceEventOption::operator=(
+    const FtraceConfig::FtraceEventOption&) = default;
+FtraceConfig::FtraceEventOption::FtraceEventOption(
+    FtraceConfig::FtraceEventOption&&) noexcept = default;
+FtraceConfig::FtraceEventOption& FtraceConfig::FtraceEventOption::operator=(
+    FtraceConfig::FtraceEventOption&&) = default;
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wfloat-equal"
+bool FtraceConfig::FtraceEventOption::operator==(
+    const FtraceConfig::FtraceEventOption& other) const {
+  return (event_id_ == other.event_id_) &&
+         (enabled_fields_ == other.enabled_fields_);
+}
+#pragma GCC diagnostic pop
+
+void FtraceConfig::FtraceEventOption::FromProto(
+    const perfetto::protos::FtraceConfig_FtraceEventOption& proto) {
+  static_assert(sizeof(event_id_) == sizeof(proto.event_id()), "size mismatch");
+  event_id_ = static_cast<decltype(event_id_)>(proto.event_id());
+
+  enabled_fields_.clear();
+  for (const auto& field : proto.enabled_fields()) {
+    enabled_fields_.emplace_back();
+    static_assert(
+        sizeof(enabled_fields_.back()) == sizeof(proto.enabled_fields(0)),
+        "size mismatch");
+    enabled_fields_.back() =
+        static_cast<decltype(enabled_fields_)::value_type>(field);
+  }
+  unknown_fields_ = proto.unknown_fields();
+}
+
+void FtraceConfig::FtraceEventOption::ToProto(
+    perfetto::protos::FtraceConfig_FtraceEventOption* proto) const {
+  proto->Clear();
+
+  static_assert(sizeof(event_id_) == sizeof(proto->event_id()),
+                "size mismatch");
+  proto->set_event_id(static_cast<decltype(proto->event_id())>(event_id_));
+
+  for (const auto& it : enabled_fields_) {
+    proto->add_enabled_fields(
+        static_cast<decltype(proto->enabled_fields(0))>(it));
+    static_assert(sizeof(it) == sizeof(proto->enabled_fields(0)),
+                  "size mismatch");
+  }
   *(proto->mutable_unknown_fields()) = unknown_fields_;
 }
 

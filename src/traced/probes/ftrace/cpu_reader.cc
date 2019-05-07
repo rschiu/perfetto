@@ -526,7 +526,8 @@ size_t CpuReader::ParsePage(const uint8_t* ptr,
         if (filter->IsEventEnabled(ftrace_event_id)) {
           protos::pbzero::FtraceEvent* event = bundle->add_event();
           event->set_timestamp(timestamp);
-          if (!ParseEvent(ftrace_event_id, start, next, table, event, metadata))
+          if (!ParseEvent(ftrace_event_id, start, next, table, event, metadata,
+                          filter))
             return 0;
         }
 
@@ -545,7 +546,8 @@ bool CpuReader::ParseEvent(uint16_t ftrace_event_id,
                            const uint8_t* end,
                            const ProtoTranslationTable* table,
                            protozero::Message* message,
-                           FtraceMetadata* metadata) {
+                           FtraceMetadata* metadata,
+                           const EventFilter* filter) {
   PERFETTO_DCHECK(start < end);
   const size_t length = static_cast<size_t>(end - start);
 
@@ -578,8 +580,9 @@ bool CpuReader::ParseEvent(uint16_t ftrace_event_id,
       success &= ParseField(field, start, end, generic_field, metadata);
     }
   } else {  // Parse all other events.
-    for (const Field& field : info.fields) {
-      success &= ParseField(field, start, end, nested, metadata);
+    for (size_t i = 0; i < info.fields.size(); i++) {
+      if (filter->IsFieldEnabled(info.ftrace_event_id, i))
+        success &= ParseField(info.fields[i], start, end, nested, metadata);
     }
   }
 

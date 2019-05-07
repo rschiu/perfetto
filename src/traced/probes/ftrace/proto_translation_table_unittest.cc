@@ -479,5 +479,26 @@ TEST(EventFilterTest, EnableEventsFrom) {
   EXPECT_TRUE(empty_filter.IsEventEnabled(1));
 }
 
+TEST(EventFilterTest, Fields) {
+  EventFilter filter;
+  filter.AddEnabledEvent(1);
+  EXPECT_TRUE(filter.IsFieldEnabled(1, 0));
+  EXPECT_TRUE(filter.IsFieldEnabled(1, 2));
+  EXPECT_TRUE(filter.IsFieldEnabled(1, 15));
+  EXPECT_TRUE(filter.IsFieldEnabled(1, 16));
+
+  filter.DisableAllFields(1);
+  EXPECT_FALSE(filter.IsFieldEnabled(1, 0));
+  EXPECT_FALSE(filter.IsFieldEnabled(1, 2));
+  EXPECT_FALSE(filter.IsFieldEnabled(1, 15));
+  EXPECT_TRUE(filter.IsFieldEnabled(1, 16));
+
+  filter.EnableField(1, 2);
+  EXPECT_FALSE(filter.IsFieldEnabled(1, 0));
+  EXPECT_TRUE(filter.IsFieldEnabled(1, 2));
+  EXPECT_FALSE(filter.IsFieldEnabled(1, 15));
+  EXPECT_TRUE(filter.IsFieldEnabled(1, 16));
+}
+
 }  // namespace
 }  // namespace perfetto

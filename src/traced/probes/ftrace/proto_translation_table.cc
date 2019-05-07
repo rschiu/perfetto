@@ -558,21 +558,38 @@ EventFilter::EventFilter() = default;
 EventFilter::~EventFilter() = default;
 
 void EventFilter::AddEnabledEvent(size_t ftrace_event_id) {
-  if (ftrace_event_id >= enabled_ids_.size())
-    enabled_ids_.resize(ftrace_event_id + 1);
+  MaybeExpandStorage(ftrace_event_id);
   enabled_ids_[ftrace_event_id] = true;
+  enabled_fields_[ftrace_event_id] = 0xffff;
 }
 
 void EventFilter::DisableEvent(size_t ftrace_event_id) {
   if (ftrace_event_id >= enabled_ids_.size())
     return;
   enabled_ids_[ftrace_event_id] = false;
+  enabled_fields_[ftrace_event_id] = 0x0000;
+}
+
+void EventFilter::DisableAllFields(size_t ftrace_event_id) {
+  MaybeExpandStorage(ftrace_event_id);
+  enabled_fields_[ftrace_event_id] = 0x0000;
+}
+
+void EventFilter::EnableField(size_t ftrace_event_id, size_t field) {
+  MaybeExpandStorage(ftrace_event_id);
+  enabled_fields_[ftrace_event_id] |= (1 << field);
 }
 
 bool EventFilter::IsEventEnabled(size_t ftrace_event_id) const {
   if (ftrace_event_id == 0 || ftrace_event_id >= enabled_ids_.size())
     return false;
   return enabled_ids_[ftrace_event_id];
+}
+
+bool EventFilter::IsFieldEnabled(size_t ftrace_event_id, size_t field) const {
+  if (ftrace_event_id == 0 || ftrace_event_id >= enabled_ids_.size())
+    return false;
+  return (field > 15) || (enabled_fields_[ftrace_event_id] & (1 << field));
 }
 
 std::set<size_t> EventFilter::GetEnabledEvents() const {
@@ -591,6 +608,13 @@ void EventFilter::EnableEventsFrom(const EventFilter& other) {
   for (size_t i = 0; i < other.enabled_ids_.size(); i++) {
     if (other.enabled_ids_[i])
       enabled_ids_[i] = true;
+  }
+}
+
+void EventFilter::MaybeExpandStorage(size_t ftrace_event_id) {
+  if (ftrace_event_id >= enabled_ids_.size()) {
+    enabled_ids_.resize(ftrace_event_id + 1);
+    enabled_fields_.resize(ftrace_event_id + 1);
   }
 }
 

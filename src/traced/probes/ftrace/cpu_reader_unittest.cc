@@ -690,6 +690,42 @@ TEST(CpuReaderTest, ParseSixSchedSwitch) {
   }
 }
 
+TEST(CpuReaderTest, ParseSixSchedSwitchWithFilteredFields) {
+  const ExamplePage* test_case = &g_six_sched_switch;
+
+  BundleProvider bundle_provider(base::kPageSize);
+  ProtoTranslationTable* table = GetTable(test_case->name);
+  auto page = PageFromXxd(test_case->data);
+
+  EventFilter filter;
+  size_t id = table->EventToFtraceId(GroupAndName("sched", "sched_switch"));
+  filter.AddEnabledEvent(id);
+  filter.DisableAllFields(id);
+  filter.EnableField(id, 4);
+  filter.EnableField(id, 5);
+  filter.EnableField(id, 6);
+
+  FtraceMetadata metadata{};
+  ASSERT_TRUE(CpuReader::ParsePage(page.get(), &filter,
+                                   bundle_provider.writer(), table, &metadata));
+
+  auto bundle = bundle_provider.ParseProto();
+  ASSERT_TRUE(bundle);
+  EXPECT_EQ(metadata.overwrite_count, 0ul);
+  ASSERT_EQ(bundle->event().size(), 6);
+
+  for (int i = 0; i < bundle->event().size(); i++) {
+    const protos::FtraceEvent& event = bundle->event().Get(i);
+    EXPECT_FALSE(event.sched_switch().has_prev_comm());
+    EXPECT_FALSE(event.sched_switch().has_prev_pid());
+    EXPECT_FALSE(event.sched_switch().has_prev_prio());
+    EXPECT_FALSE(event.sched_switch().has_prev_state());
+    EXPECT_TRUE(event.sched_switch().has_next_comm());
+    EXPECT_TRUE(event.sched_switch().has_next_pid());
+    EXPECT_TRUE(event.sched_switch().has_next_prio());
+  }
+}
+
 TEST_F(CpuReaderTableTest, ParseAllFields) {
   using FakeEventProvider =
       ProtoProvider<pbzero::FakeFtraceEvent, FakeFtraceEvent>;
@@ -871,10 +907,12 @@ TEST_F(CpuReaderTableTest, ParseAllFields) {
   auto input = writer.GetCopy();
   auto length = writer.written();
   FtraceMetadata metadata{};
+  EventFilter filter{};
+  filter.AddEnabledEvent(ftrace_event_id);
 
   ASSERT_TRUE(CpuReader::ParseEvent(ftrace_event_id, input.get(),
                                     input.get() + length, &table,
-                                    provider.writer(), &metadata));
+                                    provider.writer(), &metadata, &filter));
 
   auto event = provider.ParseProto();
   ASSERT_TRUE(event);

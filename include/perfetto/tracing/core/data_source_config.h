@@ -50,6 +50,7 @@ namespace perfetto {
 namespace protos {
 class DataSourceConfig;
 class FtraceConfig;
+class FtraceConfig_FtraceEventOption;
 class ChromeConfig;
 class InodeFileConfig;
 class InodeFileConfig_MountPointMappingEntry;

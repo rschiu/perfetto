@@ -510,6 +510,31 @@ TEST_F(FtraceConfigMuxerTest, GetFtraceEvents) {
   EXPECT_THAT(events, Not(Contains(GroupAndName("ftrace", "print"))));
 }
 
+TEST_F(FtraceConfigMuxerTest, FieldFilter) {
+  NiceMock<MockFtraceProcfs> ftrace;
+  FtraceConfigMuxer model(&ftrace, table_.get());
+
+  FtraceConfig config = CreateFtraceConfig({"sched/sched_switch"});
+  auto options = config.add_ftrace_event_options();
+  options->set_event_id(4);            // SchedSwitchFtraceEvent
+  *options->add_enabled_fields() = 4;  // prev_state
+  *options->add_enabled_fields() = 5;  // next_comm
+  *options->add_enabled_fields() = 6;  // next_pid
+
+  FtraceConfigId id = model.SetupConfig(config);
+
+  const EventFilter* filter = model.GetEventFilter(id);
+  const size_t sched_switch_ftrace_id = 1;
+  ASSERT_TRUE(filter);
+  EXPECT_TRUE(filter->IsEventEnabled(sched_switch_ftrace_id));
+  EXPECT_FALSE(filter->IsFieldEnabled(sched_switch_ftrace_id, 0));
+  EXPECT_FALSE(filter->IsFieldEnabled(sched_switch_ftrace_id, 1));
+  EXPECT_FALSE(filter->IsFieldEnabled(sched_switch_ftrace_id, 2));
+  EXPECT_TRUE(filter->IsFieldEnabled(sched_switch_ftrace_id, 3));
+  EXPECT_TRUE(filter->IsFieldEnabled(sched_switch_ftrace_id, 4));
+  EXPECT_TRUE(filter->IsFieldEnabled(sched_switch_ftrace_id, 5));
+}
+
 TEST_F(FtraceConfigMuxerTest, GetFtraceEventsAtrace) {
   MockFtraceProcfs ftrace;
   FtraceConfigMuxer model(&ftrace, table_.get());

@@ -45,6 +45,7 @@ class TraceConfig_BufferConfig;
 class TraceConfig_DataSource;
 class DataSourceConfig;
 class FtraceConfig;
+class FtraceConfig_FtraceEventOption;
 class ChromeConfig;
 class InodeFileConfig;
 class InodeFileConfig_MountPointMappingEntry;

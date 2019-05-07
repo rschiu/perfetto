@@ -39,13 +39,56 @@
 namespace perfetto {
 namespace protos {
 class FtraceConfig;
-}
+class FtraceConfig_FtraceEventOption;
+}  // namespace protos
 }  // namespace perfetto
 
 namespace perfetto {
 
 class PERFETTO_EXPORT FtraceConfig {
  public:
+  class PERFETTO_EXPORT FtraceEventOption {
+   public:
+    FtraceEventOption();
+    ~FtraceEventOption();
+    FtraceEventOption(FtraceEventOption&&) noexcept;
+    FtraceEventOption& operator=(FtraceEventOption&&);
+    FtraceEventOption(const FtraceEventOption&);
+    FtraceEventOption& operator=(const FtraceEventOption&);
+    bool operator==(const FtraceEventOption&) const;
+    bool operator!=(const FtraceEventOption& other) const {
+      return !(*this == other);
+    }
+
+    // Conversion methods from/to the corresponding protobuf types.
+    void FromProto(const perfetto::protos::FtraceConfig_FtraceEventOption&);
+    void ToProto(perfetto::protos::FtraceConfig_FtraceEventOption*) const;
+
+    uint32_t event_id() const { return event_id_; }
+    void set_event_id(uint32_t value) { event_id_ = value; }
+
+    int enabled_fields_size() const {
+      return static_cast<int>(enabled_fields_.size());
+    }
+    const std::vector<uint32_t>& enabled_fields() const {
+      return enabled_fields_;
+    }
+    std::vector<uint32_t>* mutable_enabled_fields() { return &enabled_fields_; }
+    void clear_enabled_fields() { enabled_fields_.clear(); }
+    uint32_t* add_enabled_fields() {
+      enabled_fields_.emplace_back();
+      return &enabled_fields_.back();
+    }
+
+   private:
+    uint32_t event_id_ = {};
+    std::vector<uint32_t> enabled_fields_;
+
+    // Allows to preserve unknown protobuf fields for compatibility
+    // with future versions of .proto files.
+    std::string unknown_fields_;
+  };
+
   FtraceConfig();
   ~FtraceConfig();
   FtraceConfig(FtraceConfig&&) noexcept;
@@ -96,6 +139,21 @@ class PERFETTO_EXPORT FtraceConfig {
     return &atrace_apps_.back();
   }
 
+  int ftrace_event_options_size() const {
+    return static_cast<int>(ftrace_event_options_.size());
+  }
+  const std::vector<FtraceEventOption>& ftrace_event_options() const {
+    return ftrace_event_options_;
+  }
+  std::vector<FtraceEventOption>* mutable_ftrace_event_options() {
+    return &ftrace_event_options_;
+  }
+  void clear_ftrace_event_options() { ftrace_event_options_.clear(); }
+  FtraceEventOption* add_ftrace_event_options() {
+    ftrace_event_options_.emplace_back();
+    return &ftrace_event_options_.back();
+  }
+
   uint32_t buffer_size_kb() const { return buffer_size_kb_; }
   void set_buffer_size_kb(uint32_t value) { buffer_size_kb_ = value; }
 
@@ -106,6 +164,7 @@ class PERFETTO_EXPORT FtraceConfig {
   std::vector<std::string> ftrace_events_;
   std::vector<std::string> atrace_categories_;
   std::vector<std::string> atrace_apps_;
+  std::vector<FtraceEventOption> ftrace_event_options_;
   uint32_t buffer_size_kb_ = {};
   uint32_t drain_period_ms_ = {};
 

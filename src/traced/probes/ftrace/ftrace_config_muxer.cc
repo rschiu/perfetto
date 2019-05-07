@@ -346,6 +346,21 @@ FtraceConfigId FtraceConfigMuxer::SetupConfig(const FtraceConfig& request) {
     }
   }
 
+  for (const FtraceConfig::FtraceEventOption& options :
+       request.ftrace_event_options()) {
+    uint32_t proto_id = options.event_id();
+    const Event* event = table_->GetEventByProtoId(proto_id);
+    if (!event)
+      continue;
+    uint32_t ftrace_event_id = event->ftrace_event_id;
+    if (options.enabled_fields().size() > 0)
+      filter.DisableAllFields(ftrace_event_id);
+    for (uint32_t proto_field_id : options.enabled_fields()) {
+      // TODO(hjd): Fix
+      filter.EnableField(ftrace_event_id, proto_field_id - 1);
+    }
+  }
+
   FtraceConfigId id = ++last_id_;
   configs_.emplace(id, std::move(actual));
   filters_.emplace(id, std::move(filter));

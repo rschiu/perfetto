@@ -171,7 +171,8 @@ class CpuReader {
                          const uint8_t* end,
                          const ProtoTranslationTable* table,
                          protozero::Message* message,
-                         FtraceMetadata* metadata);
+                         FtraceMetadata* metadata,
+                         const EventFilter* filter);
 
   static bool ParseField(const Field& field,
                          const uint8_t* start,
