@@ -124,8 +124,8 @@ class SharedRingBuffer {
   // Exposed for fuzzers.
   struct MetadataPage {
     alignas(uint64_t) std::atomic<bool> spinlock;
-    uint64_t read_pos;
-    uint64_t write_pos;
+    std::atomic<uint64_t> read_pos;
+    std::atomic<uint64_t> write_pos;
 
     std::atomic<uint64_t> failed_spinlocks;
     Stats stats;
@@ -149,13 +149,12 @@ class SharedRingBuffer {
   void Initialize(base::ScopedFile mem_fd);
   bool IsCorrupt(const PointerPositions& pos);
 
-  inline base::Optional<PointerPositions> GetPointerPositions(
-      const ScopedSpinlock& lock) {
-    PERFETTO_DCHECK(lock.locked());
-
+  inline base::Optional<PointerPositions> GetPointerPositions() {
     PointerPositions pos;
-    pos.read_pos = meta_->read_pos;
-    pos.write_pos = meta_->write_pos;
+    // Acquire read to make sure we observe updates to write_pos, so that
+    // read_pos <= write_pos.
+    pos.read_pos = meta_->read_pos.load(std::memory_order_acquire);
+    pos.write_pos = meta_->write_pos.load(std::memory_order_relaxed);
 
     base::Optional<PointerPositions> result;
     if (IsCorrupt(pos))
