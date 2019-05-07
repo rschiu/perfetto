@@ -174,7 +174,7 @@ SharedRingBuffer::Buffer SharedRingBuffer::BeginWrite(
   PERFETTO_DCHECK(spinlock.locked());
   Buffer result;
 
-  base::Optional<PointerPositions> opt_pos = GetPointerPositions(spinlock);
+  base::Optional<PointerPositions> opt_pos = GetPointerPositions();
   if (!opt_pos) {
     meta_->stats.num_writes_corrupt++;
     errno = EBADF;
@@ -221,9 +221,7 @@ void SharedRingBuffer::EndWrite(Buffer buf) {
 }
 
 SharedRingBuffer::Buffer SharedRingBuffer::BeginRead() {
-  ScopedSpinlock spinlock(&meta_->spinlock, ScopedSpinlock::Mode::Blocking);
-
-  base::Optional<PointerPositions> opt_pos = GetPointerPositions(spinlock);
+  base::Optional<PointerPositions> opt_pos = GetPointerPositions();
   if (!opt_pos) {
     meta_->stats.num_reads_corrupt++;
     errno = EBADF;
@@ -268,9 +266,8 @@ SharedRingBuffer::Buffer SharedRingBuffer::BeginRead() {
 void SharedRingBuffer::EndRead(Buffer buf) {
   if (!buf)
     return;
-  ScopedSpinlock spinlock(&meta_->spinlock, ScopedSpinlock::Mode::Blocking);
   size_t size_with_header = base::AlignUp<kAlignment>(buf.size + kHeaderSize);
-  meta_->read_pos += size_with_header;
+  meta_->read_pos.fetch_add(size_with_header, std::memory_order_release);
   meta_->stats.num_reads_succeeded++;
 }
 
