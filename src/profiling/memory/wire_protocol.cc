@@ -79,16 +79,7 @@ bool SendWireMessage(SharedRingBuffer* shmem, const WireMessage& msg) {
     total_size = iovecs[0].iov_len + iovecs[1].iov_len;
   }
 
-  SharedRingBuffer::Buffer buf;
-  {
-    ScopedSpinlock lock = shmem->AcquireLock(ScopedSpinlock::Mode::Try);
-    if (!lock.locked()) {
-      PERFETTO_DLOG("Failed to acquire spinlock.");
-      errno = EAGAIN;
-      return false;
-    }
-    buf = shmem->BeginWrite(lock, total_size);
-  }
+  SharedRingBuffer::Buffer buf = shmem->BeginWrite(total_size);
   if (!buf) {
     PERFETTO_DFATAL("Buffer overflow.");
     shmem->EndWrite(std::move(buf));

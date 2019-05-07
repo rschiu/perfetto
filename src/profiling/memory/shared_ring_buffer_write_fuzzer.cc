@@ -64,7 +64,7 @@ int FuzzRingBufferWrite(const uint8_t* data, size_t size) {
   // for the metadata.
   size_t total_size_pages = 1 + RoundToPow2(payload_size_pages);
 
-  // Clear spinlock field, as otherwise we will fail acquiring the lock below.
+  // Clear spinlock field, as otherwise we willfail acquiring the lock below.
   FuzzingInputHeader header = {};
   memcpy(&header, data, sizeof(header));
   SharedRingBuffer::MetadataPage& metadata_page = header.metadata_page;
@@ -80,12 +80,7 @@ int FuzzRingBufferWrite(const uint8_t* data, size_t size) {
   auto buf = SharedRingBuffer::Attach(std::move(fd));
   PERFETTO_CHECK(!!buf);
 
-  SharedRingBuffer::Buffer write_buf;
-  {
-    auto lock = buf->AcquireLock(ScopedSpinlock::Mode::Try);
-    PERFETTO_CHECK(lock.locked());
-    write_buf = buf->BeginWrite(lock, header.write_size);
-  }
+  SharedRingBuffer::Buffer write_buf = buf->BeginWrite(header.write_size);
   if (!write_buf)
     return 0;
 

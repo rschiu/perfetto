@@ -263,14 +263,7 @@ void UnwindingWorker::OnDisconnect(base::UnixSocket* self) {
   // allow us to free the bookkeeping data earlier for processes that exit
   // during the session. See TODO in
   // HeapprofdProducer::HandleSocketDisconnected.
-  SharedRingBuffer::Stats stats = {};
-  {
-    auto lock = shmem.AcquireLock(ScopedSpinlock::Mode::Try);
-    if (lock.locked())
-      stats = shmem.GetStats(lock);
-    else
-      PERFETTO_ELOG("Failed to log shmem to get stats.");
-  }
+  SharedRingBuffer::Stats stats = shmem.GetStats();
   DataSourceInstanceID ds_id = client_data.data_source_instance_id;
   pid_t peer_pid = self->peer_pid();
   client_data_.erase(it);

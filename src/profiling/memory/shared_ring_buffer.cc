@@ -168,10 +168,7 @@ void SharedRingBuffer::Initialize(base::ScopedFile mem_fd) {
   mem_fd_ = std::move(mem_fd);
 }
 
-SharedRingBuffer::Buffer SharedRingBuffer::BeginWrite(
-    const ScopedSpinlock& spinlock,
-    size_t size) {
-  PERFETTO_DCHECK(spinlock.locked());
+SharedRingBuffer::Buffer SharedRingBuffer::BeginWriteInternal(size_t size) {
   Buffer result;
 
   base::Optional<PointerPositions> opt_pos = GetPointerPositions();
@@ -197,11 +194,16 @@ SharedRingBuffer::Buffer SharedRingBuffer::BeginWrite(
     return result;
   }
 
-  uint8_t* wr_ptr = at(pos.write_pos);
+  if (!meta_->write_pos.compare_exchange_strong(
+          pos.write_pos, pos.write_pos + size_with_header)) {
+    errno = EINTR;
+    return result;
+  }
 
+  uint8_t* wr_ptr = at(pos.write_pos);
   result.size = size;
   result.data = wr_ptr + kHeaderSize;
-  meta_->write_pos += size_with_header;
+
   meta_->stats.bytes_written += size;
   meta_->stats.num_writes_succeeded++;
   // By making this a release store, we can save grabbing the spinlock in

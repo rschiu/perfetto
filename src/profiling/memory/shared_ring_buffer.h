@@ -97,28 +97,27 @@ class SharedRingBuffer {
   size_t size() const { return size_; }
   int fd() const { return *mem_fd_; }
 
-  Buffer BeginWrite(const ScopedSpinlock& spinlock, size_t size);
+  Buffer BeginWrite(size_t size) {
+    Buffer buf;
+    for (size_t i = 0; i < 1000; ++i) {
+      buf = BeginWriteInternal(size);
+      if (buf || errno != EINTR)
+        return buf;
+    }
+    errno = EAGAIN;
+    return buf;
+  }
+
   void EndWrite(Buffer buf);
 
   Buffer BeginRead();
   void EndRead(Buffer);
 
-  Stats GetStats(ScopedSpinlock& spinlock) {
-    PERFETTO_DCHECK(spinlock.locked());
+  Stats GetStats() {
     Stats stats = meta_->stats;
     stats.failed_spinlocks =
         meta_->failed_spinlocks.load(std::memory_order_relaxed);
     return stats;
-  }
-
-  // This is used by the caller to be able to hold the SpinLock after
-  // BeginWrite has returned. This is so that additional bookkeeping can be
-  // done under the lock. This will be used to increment the sequence_number.
-  ScopedSpinlock AcquireLock(ScopedSpinlock::Mode mode) {
-    auto lock = ScopedSpinlock(&meta_->spinlock, mode);
-    if (PERFETTO_UNLIKELY(!lock.locked()))
-      meta_->failed_spinlocks.fetch_add(1, std::memory_order_relaxed);
-    return lock;
   }
 
   // Exposed for fuzzers.
@@ -148,6 +147,7 @@ class SharedRingBuffer {
 
   void Initialize(base::ScopedFile mem_fd);
   bool IsCorrupt(const PointerPositions& pos);
+  Buffer BeginWriteInternal(size_t size);
 
   inline base::Optional<PointerPositions> GetPointerPositions() {
     PointerPositions pos;
