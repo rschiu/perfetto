@@ -18,11 +18,14 @@
 #define SRC_PROFILING_MEMORY_SCOPED_SPINLOCK_H_
 
 #include "perfetto/base/logging.h"
+#include "perfetto/base/time.h"
 #include "perfetto/base/utils.h"
 
 #include <atomic>
 #include <new>
 #include <utility>
+
+#include <inttypes.h>
 
 namespace perfetto {
 namespace profiling {
@@ -37,6 +40,11 @@ class ScopedSpinlock {
   };
 
   ScopedSpinlock(std::atomic<bool>* lock, Mode mode) : lock_(lock) {
+    struct timespec ts;
+    if (PERFETTO_LIKELY(clock_gettime(CLOCK_MONOTONIC_COARSE, &ts) == 0)) {
+      start_time_ = static_cast<uint64_t>(base::FromPosixTimespec(ts).count());
+    }
+
     if (PERFETTO_LIKELY(!lock_->exchange(true, std::memory_order_acquire))) {
       locked_ = true;
       return;
@@ -68,6 +76,17 @@ class ScopedSpinlock {
       lock_->store(false, std::memory_order_release);
     }
     locked_ = false;
+
+    struct timespec ts;
+    if (start_time_ > 0 &&
+        PERFETTO_UNLIKELY(clock_gettime(CLOCK_MONOTONIC_COARSE, &ts) == 0)) {
+      uint64_t cur_time =
+          static_cast<uint64_t>(base::FromPosixTimespec(ts).count());
+      uint64_t diff_us = (cur_time - start_time_) / 1000;
+      if (diff_us >= 5000)
+        PERFETTO_LOG("DEBUG: Slow spinlock %p (> 5ms): %" PRIu64 " us.",
+                     static_cast<void*>(lock_), diff_us);
+    }
   }
 
   bool locked() const { return locked_; }
@@ -76,6 +95,7 @@ class ScopedSpinlock {
   void LockSlow(Mode mode);
   std::atomic<bool>* lock_;
   bool locked_ = false;
+  uint64_t start_time_ = 0;
 };
 
 }  // namespace profiling

@@ -404,6 +404,8 @@ bool HEAPPROFD_ADD_PREFIX(_initialize)(const MallocDispatch* malloc_dispatch,
     return false;
   }
   PERFETTO_LOG("heapprofd_client initialized.");
+  PERFETTO_LOG("DEBUG: client spinlock address: %p",
+               reinterpret_cast<void*>(&g_client_lock));
   {
     ScopedSpinlock s(&g_client_lock, ScopedSpinlock::Mode::Try);
     if (PERFETTO_UNLIKELY(!s.locked()))
