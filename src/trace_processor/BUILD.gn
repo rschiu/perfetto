@@ -84,6 +84,7 @@ source_set("lib") {
     "heap_profile_tracker.h",
     "instants_table.cc",
     "instants_table.h",
+    "metrics.descriptor.h",
     "null_term_string_view.h",
     "process_table.cc",
     "process_table.h",
