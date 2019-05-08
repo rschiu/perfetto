@@ -370,6 +370,9 @@ def apply_module_dependency(blueprint, desc, module, dep_name):
         if "gen_merged_sql_metrics" in dep_name:
           dep_mod = create_merged_sql_metrics_target(blueprint, desc, dep_name)
           module.generated_headers.append(dep_mod.name)
+        elif "gen_binary_descriptor" in target['script']:
+          dep_mod = create_binary_descriptor_target(blueprint, desc, dep_name)
+          module.generated_headers.append(dep_mod.name)
         else:
           create_modules_from_target(blueprint, desc, dep_name)
           # Depend both on the generated sources and headers -- see
@@ -511,6 +514,47 @@ def make_genrules_for_action(blueprint, desc, target_name):
             for src in header_module.srcs
         ]
     return source_module, header_module
+
+def create_binary_descriptor_target(blueprint, desc, gn_target_name):
+    target_desc = desc[gn_target_name]
+
+    args = target_desc['args']
+    parser = ThrowingArgumentParser('Action in target %s (%s)' %
+                                    (gn_target_name, ' '.join(args)))
+    parser.add_argument('--proto-path')
+    parser.add_argument('--protoc')
+    parser.add_argument('source')
+    parser.add_argument('target')
+    args = parser.parse_args(args)
+
+    # In GN builds the proto path is always relative to the output directory
+    # (out/tmp.xxx).
+    assert args.proto_path.startswith('../../')
+
+    module = Module(
+        'genrule',
+        label_to_module_name(gn_target_name),
+    )
+    module.cmd = ' '.join([
+        '$(location tools/gen_binary_descriptors)',
+        '--protoc=$(location aprotoc)',
+        '--proto_path=%s/%s' % (tree_path, args.proto_path[6:]),
+    ])
+    module.tool_files = [
+        'tools/gen_binary_descriptors',
+    ]
+    module.out = set(
+        src[src.index('gen/') + len('gen/'):]
+        for src in target_desc.get('outputs', [])
+    )
+    module.srcs.extend(
+      label_to_path(src)
+      for src in target_desc.get('inputs', [])
+    )
+    module.tools = ['aprotoc']
+
+    blueprint.add_module(module)
+    return module
 
 def create_merged_sql_metrics_target(blueprint, desc, gn_target_name):
     target_desc = desc[gn_target_name]

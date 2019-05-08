@@ -467,6 +467,12 @@ class BuildGenerator(object):
 
         if target.type == 'cc_library' or target.type == 'cc_binary':
           target.srcs.update(dep_target.outs)
+      elif "gen_binary_descriptor" in dep_desc['script']:
+        dep_target = self.create_binary_descriptor_target(dep_name)
+        target.deps.add(Label("//third_party/perfetto:" + dep_target.name))
+
+        if target.type == 'cc_library' or target.type == 'cc_binary':
+          target.srcs.update(dep_target.outs)
       elif args[0].endswith('/protoc'):
         (proto_target, cc_target) = self.create_proto_target(dep_name)
         if target.type == 'proto_library':
@@ -508,6 +514,30 @@ class BuildGenerator(object):
     target.tools.update([
       'gen_merged_sql_metrics_py',
     ])
+    target.srcs.update(
+      Label(label_to_path(src))
+      for src in target_desc.get('inputs', [])
+      if src not in self.action_generated_files
+    )
+    self.build.add_target(target)
+    return target
+
+  def create_binary_descriptor_target(self, gn_target_name):
+    target_desc = self.desc[gn_target_name]
+    gn_target_name_no_toolchain = label_without_toolchain(gn_target_name)
+    target = Target(
+      'genrule',
+      label_to_target_name_with_path(gn_target_name_no_toolchain),
+      gn_name=gn_target_name_no_toolchain,
+      outs=set(
+        Label(src[src.index('gen/') + len('gen/'):])
+        for src in target_desc.get('outputs', [])
+      ),
+      cmd = '$(location gen_binary_descriptor_py) --cpp_out=$@ $SRCS',
+      tools=[
+        'gen_binary_descriptor_py',
+      ],
+    )
     target.srcs.update(
       Label(label_to_path(src))
       for src in target_desc.get('inputs', [])

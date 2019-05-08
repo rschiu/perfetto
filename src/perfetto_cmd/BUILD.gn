@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("../../gn/perfetto.gni")
 import("../../gn/proto_library.gni")
 
 source_set("perfetto_cmd") {
@@ -24,6 +23,7 @@ source_set("perfetto_cmd") {
     ":trigger_producer",
     "../../buildtools:protobuf_lite",
     "../../gn:default_deps",
+    "../../protos/perfetto/config:config_descriptor",
     "../../protos/perfetto/config:lite",
     "../base",
     "../protozero",
@@ -36,7 +36,6 @@ source_set("perfetto_cmd") {
     "pbtxt_to_pb.h",
     "perfetto_cmd.cc",
     "perfetto_cmd.h",
-    "perfetto_config.descriptor.h",
     "rate_limiter.cc",
     "rate_limiter.h",
   ]

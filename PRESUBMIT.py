@@ -33,7 +33,6 @@ def CheckChange(input, output):
     results += CheckIncludeGuards(input, output)
     results += CheckBuild(input, output)
     results += CheckAndroidBlueprint(input, output)
-    results += CheckBinaryDescriptors(input, output)
     results += CheckMergedTraceConfigProto(input, output)
     results += CheckWhitelist(input, output)
     return results
@@ -110,21 +109,6 @@ def CheckIncludeGuards(input_api, output_api):
         return [
             output_api.PresubmitError(
                 'Please run ' + tool + ' to fix include guards.')
-        ]
-    return []
-
-
-def CheckBinaryDescriptors(input_api, output_api):
-    tool = 'tools/gen_binary_descriptors'
-    file_filter = lambda x: input_api.FilterSourceFile(
-          x,
-          white_list=('protos/perfetto/.*[.]proto$', '.*[.]h', tool))
-    if not input_api.AffectedSourceFiles(file_filter):
-        return []
-    if subprocess.call([tool, '--check-only']):
-        return [
-            output_api.PresubmitError(
-                'Please run ' + tool + ' to update binary descriptors.')
         ]
     return []
 

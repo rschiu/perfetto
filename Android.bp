@@ -497,6 +497,7 @@ cc_binary {
   generated_headers: [
     "perfetto_protos_perfetto_common_lite_gen_headers",
     "perfetto_protos_perfetto_common_zero_gen_headers",
+    "perfetto_protos_perfetto_config_config_descriptor",
     "perfetto_protos_perfetto_config_lite_gen_headers",
     "perfetto_protos_perfetto_config_zero_gen_headers",
     "perfetto_protos_perfetto_ipc_ipc_gen_headers",
@@ -848,6 +849,23 @@ genrule {
   ],
   export_include_dirs: [
     "protos",
+  ],
+}
+
+genrule {
+  name: "perfetto_protos_perfetto_config_config_descriptor",
+  srcs: [
+    "out/tmp.gen_android_bp/gcc_like_host/protoc",
+  ],
+  tools: [
+    "aprotoc",
+  ],
+  cmd: "$(location tools/gen_binary_descriptors) --protoc=$(location aprotoc) --proto_path=external/perfetto/protos",
+  out: [
+    "protos/perfetto/config/perfetto_config.descriptor.h",
+  ],
+  tool_files: [
+    "tools/gen_binary_descriptors",
   ],
 }
 
@@ -3097,6 +3115,7 @@ cc_test {
   generated_headers: [
     "perfetto_protos_perfetto_common_lite_gen_headers",
     "perfetto_protos_perfetto_common_zero_gen_headers",
+    "perfetto_protos_perfetto_config_config_descriptor",
     "perfetto_protos_perfetto_config_lite_gen_headers",
     "perfetto_protos_perfetto_config_zero_gen_headers",
     "perfetto_protos_perfetto_ipc_ipc_gen_headers",

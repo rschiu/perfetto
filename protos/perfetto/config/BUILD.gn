@@ -15,6 +15,7 @@
 import("../../../gn/perfetto.gni")
 import("../../../gn/proto_library.gni")
 import("../../../gn/protozero_library.gni")
+import("../../../tools/gen_binary_descriptors.gni")
 
 proto_library("lite") {
   # Chromium shouldn't ignore the "android/" folder.
@@ -81,4 +82,9 @@ proto_library("merged_config") {
   sources = [
     "perfetto_config.proto",
   ]
+}
+
+# Generates the binary descriptor for the Perfetto config.
+gen_binary_descriptors("config_descriptor") {
+  source = "perfetto_config.proto"
 }

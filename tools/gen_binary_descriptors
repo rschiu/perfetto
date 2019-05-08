@@ -25,49 +25,15 @@ import subprocess
 import hashlib
 import textwrap
 
-SOURCE_TARGET = {
-    'protos/perfetto/config/perfetto_config.proto':
-            'src/perfetto_cmd/perfetto_config.descriptor.h',
-}
-
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-
 SCRIPT_PATH = 'tools/gen_binary_descriptors'
-
 
 def hash_path(path):
   hash = hashlib.sha1()
-  with open(os.path.join(ROOT_DIR, path)) as f:
+  with open(path) as f:
     hash.update(f.read())
   return hash.hexdigest()
 
-
-def find_protoc():
-  for root, dirs, files in os.walk(ROOT_DIR):
-    if 'protoc' in files:
-      return os.path.join(root, 'protoc')
-    for name in ('src', 'buildtools'):
-      if name in dirs:
-        dirs.remove(name)
-  return None
-
-
-def check(source, target):
-  assert os.path.exists(os.path.join(ROOT_DIR, target)), \
-      'Output file {} does not exist and so cannot be checked'.format(target)
-
-  with open(target, 'rb') as f:
-    s = f.read()
-
-  hashes = re.findall(r'// SHA1\((.*)\)\n// (.*)\n', s)
-  assert sorted([SCRIPT_PATH, source]) == sorted([key for key, _ in hashes])
-  for path, expected_sha1 in hashes:
-    actual_sha1 = hash_path(os.path.join(ROOT_DIR, path))
-    assert actual_sha1 == expected_sha1, \
-        'In {} hash given for {} did not match'.format(target, path)
-
-
-def generate(source, target, protoc_path):
+def generate(proto_path, source, target, protoc_path):
   _, source_name = os.path.split(source)
   _, target_name = os.path.split(target)
   assert source_name.replace('.proto', '.descriptor.h') == target_name
@@ -75,10 +41,10 @@ def generate(source, target, protoc_path):
   with tempfile.NamedTemporaryFile() as fdescriptor:
     subprocess.check_call([
         protoc_path,
-        '--proto_path=protos',
+        '--proto_path=' + proto_path,
         '-o{}'.format(fdescriptor.name),
         source,
-    ], cwd=ROOT_DIR)
+    ])
 
     s = fdescriptor.read()
     proto_name = source_name[:-len('.proto')].title().replace("_", "")
@@ -90,7 +56,7 @@ def generate(source, target, protoc_path):
         subsequent_indent='     ')
     include_guard = target.replace('/', '_').replace('.', '_').upper() + '_'
 
-    with open(os.path.join(ROOT_DIR, target), 'wb') as f:
+    with open(target, 'wb') as f:
       f.write("""
 #ifndef {include_guard}
 #define {include_guard}
@@ -133,21 +99,15 @@ constexpr std::array<uint8_t, {size}> {constant_name}{{
 
 def main():
   parser = argparse.ArgumentParser()
-  parser.add_argument('--check-only', action='store_true')
-  parser.add_argument('--protoc')
+  parser.add_argument('--protoc', required=True)
+  parser.add_argument('--proto-path', required=True)
+  parser.add_argument("source")
+  parser.add_argument("target")
   args = parser.parse_args()
 
   try:
-    for source, target in SOURCE_TARGET.iteritems():
-      if args.check_only:
-          check(source, target)
-      else:
-        protoc = args.protoc or find_protoc()
-        assert protoc, 'protoc not found specific (--protoc PROTOC_PATH)'
-        assert os.path.exists(protoc), '{} does not exist'.format(protoc)
-        if protoc is not args.protoc:
-          print('Using protoc: {}'.format(protoc))
-        generate(source, target, protoc)
+    assert os.path.exists(args.protoc), '{} does not exist'.format(args.protoc)
+    generate(args.proto_path, args.source, args.target, args.protoc)
   except AssertionError as e:
     if not str(e):
       raise
