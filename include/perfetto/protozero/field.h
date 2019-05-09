@@ -130,6 +130,8 @@ class Field {
     return size_;
   }
 
+  inline size_t size_for_size_measurement() const { return size_; }
+
   inline uint64_t raw_int_value() const { return int_value_; }
 
   inline void initialize(uint16_t id,
