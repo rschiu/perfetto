@@ -124,10 +124,10 @@ def main(argv):
                       "Default 7 days", type=int, default=604800000)
   parser.add_argument("--no-start", help="Do not start heapprofd",
                       action='store_true')
-  parser.add_argument("-p", "--pid", help="PIDs to profile", nargs='+',
-                      type=int)
-  parser.add_argument("-n", "--name", help="Process names to profile",
-                      nargs='+')
+  parser.add_argument("-p", "--pid", help="Comma-separated list of PIDs to "
+                      "profile", default=None)
+  parser.add_argument("-n", "--name", help="Comma-separated list of process "
+                      "names to profile.", default=None)
   parser.add_argument("-t", "--trace-to-text-binary",
                       help="Path to local trace to text. For debugging.")
   parser.add_argument("-c", "--continuous-dump",
@@ -175,10 +175,15 @@ def main(argv):
   if args.block_client:
     target_cfg += "block_client: true\n"
   if args.pid:
-    for pid in args.pid:
+    for pid in args.pid.split(','):
+      try:
+        pid = int(pid)
+      except ValueError:
+        print("FATAL: invalid PID %s" % pid, file=sys.stderr)
+        return 1
       target_cfg += '{}pid: {}\n'.format(CFG_IDENT, pid)
   if args.name:
-    for name in args.name:
+    for name in args.name.split(','):
       target_cfg += '{}process_cmdline: "{}"\n'.format(CFG_IDENT, name)
 
   trace_to_text_binary = args.trace_to_text_binary
