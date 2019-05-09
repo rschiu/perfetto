@@ -96,9 +96,17 @@ inline Status OkStatus() {
   return Status();
 }
 
-// Returns a status object which represents an error with the given message.
-inline Status ErrStatus(std::string error) {
-  return Status(std::move(error));
+// Returns a status object which represents an error with the given message
+// formatted using printf.
+__attribute__((__format__(__printf__, 1, 2))) inline Status ErrStatus(
+    const char* format,
+    ...) {
+  va_list ap;
+  va_start(ap, format);
+
+  char buffer[1024];
+  vsnprintf(buffer, sizeof(buffer), format, ap);
+  return Status(std::string(buffer));
 }
 
 }  // namespace util
