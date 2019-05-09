@@ -821,3 +821,14 @@ py_binary(
     ],
     main = "tools/gen_merged_sql_metrics.py",
 )
+
+load("//security/fuzzing/blaze:cc_fuzz_target.bzl", "cc_fuzz_target")
+
+cc_fuzz_target(
+    name = "trace_parsing_fuzzer",
+    srcs = [ "src/trace_processor/trace_parsing_fuzzer.cc" ],
+    deps = [ ":trace_processor",
+            ":raw_query_cc_proto",
+           ],
+    componentid = 323270,
+)
