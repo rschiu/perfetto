@@ -65,10 +65,8 @@ class TraceProcessor {
     // even before calling |Next()|.
     uint32_t ColumnCount();
 
-    // Returns the error (if any) from the last call to next. If no error
-    // occurred, the returned value will be base::nullopt and implies that
-    // EOF was reached.
-    base::Optional<std::string> GetLastError();
+    // Returns the status of the iterator.
+    util::Status Status();
 
    private:
     std::unique_ptr<IteratorImpl> iterator_;

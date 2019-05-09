@@ -375,10 +375,10 @@ TraceProcessor::Iterator TraceProcessorImpl::ExecuteQuery(
   sqlite3_stmt* raw_stmt;
   int err = sqlite3_prepare_v2(*db_, sql.c_str(), static_cast<int>(sql.size()),
                                &raw_stmt, nullptr);
-  base::Optional<std::string> error;
+  util::Status status;
   uint32_t col_count = 0;
   if (err != SQLITE_OK) {
-    error = sqlite3_errmsg(*db_);
+    status = util::ErrStatus(sqlite3_errmsg(*db_));
   } else {
     col_count = static_cast<uint32_t>(sqlite3_column_count(raw_stmt));
   }
@@ -389,7 +389,7 @@ TraceProcessor::Iterator TraceProcessorImpl::ExecuteQuery(
                                                               t_start.count());
 
   std::unique_ptr<IteratorImpl> impl(new IteratorImpl(
-      this, *db_, ScopedStmt(raw_stmt), col_count, error, sql_stats_row));
+      this, *db_, ScopedStmt(raw_stmt), col_count, status, sql_stats_row));
   iterators_.emplace_back(impl.get());
   return TraceProcessor::Iterator(std::move(impl));
 }
@@ -411,13 +411,13 @@ TraceProcessor::IteratorImpl::IteratorImpl(TraceProcessorImpl* trace_processor,
                                            sqlite3* db,
                                            ScopedStmt stmt,
                                            uint32_t column_count,
-                                           base::Optional<std::string> error,
+                                           util::Status status,
                                            uint32_t sql_stats_row)
     : trace_processor_(trace_processor),
       db_(db),
       stmt_(std::move(stmt)),
       column_count_(column_count),
-      error_(error),
+      status_(status),
       sql_stats_row_(sql_stats_row) {}
 
 TraceProcessor::IteratorImpl::~IteratorImpl() {
@@ -434,7 +434,8 @@ TraceProcessor::IteratorImpl::~IteratorImpl() {
 }
 
 void TraceProcessor::IteratorImpl::Reset() {
-  *this = IteratorImpl(nullptr, nullptr, ScopedStmt(), 0, base::nullopt, 0);
+  *this = IteratorImpl(nullptr, nullptr, ScopedStmt(), 0,
+                       util::ErrStatus("Trace processor was deleted"), 0);
 }
 
 void TraceProcessor::IteratorImpl::RecordFirstNextInSqlStats() {
