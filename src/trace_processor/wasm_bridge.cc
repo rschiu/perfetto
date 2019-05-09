@@ -69,8 +69,14 @@ void trace_processor_parse(RequestID id, const uint8_t* data, size_t size) {
   // See https://github.com/WebAssembly/design/issues/1162.
   std::unique_ptr<uint8_t[]> buf(new uint8_t[size]);
   memcpy(buf.get(), data, size);
-  g_trace_processor->Parse(std::move(buf), size);
-  g_reply(id, true, "", 0);
+
+  auto status = g_trace_processor->Parse(std::move(buf), size);
+  if (status.ok()) {
+    g_reply(id, true, "", 0);
+  } else {
+    PERFETTO_FATAL("Fatal failure while parsing the trace: %s",
+                   status.message().c_str());
+  }
 }
 
 // We keep the same signature as other methods even though we don't take input
@@ -179,8 +185,8 @@ void trace_processor_rawQuery(RequestID id,
     }
     result.set_num_records(rows + 1);
   }
-  if (auto opt_error = it.GetLastError()) {
-    result.set_error(*opt_error);
+  if (auto status = it.Status()) {
+    result.set_error(status.message());
   }
 
   std::string encoded;

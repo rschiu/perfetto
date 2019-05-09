@@ -147,9 +147,9 @@ class QueryWriter {
     }
 
     // Check if we have an error in the iterator and print if so.
-    auto opt_error = iterator.GetLastError();
-    if (opt_error.has_value()) {
-      PERFETTO_ELOG("Error while writing systrace %s", opt_error->c_str());
+    if (auto status = iterator.Status()) {
+      PERFETTO_ELOG("Error while writing systrace %s",
+                    status.message().c_str());
       return false;
     }
 
