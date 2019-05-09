@@ -174,7 +174,7 @@ if (perfetto_build_standalone || perfetto_build_with_android) {
       "gn:default_deps",
       "src/traced/probes",
       "src/traced/service",
-      "src/tracing:api",
+      "src/tracing:consumer_api",
     ]
   }
 

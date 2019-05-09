@@ -147,14 +147,14 @@ source_set("test_support") {
 if (perfetto_build_standalone || perfetto_build_with_android) {
   executable("consumer_api_test") {
     deps = [
-      ":api",
+      ":consumer_api",
       "../../gn:default_deps",
       "../../protos/perfetto/config:lite",
       "../../protos/perfetto/trace:lite",
       "../base",
     ]
     sources = [
-      "api_impl/consumer_api_test.cc",
+      "public/consumer_api_test.cc",
     ]
   }
 
@@ -171,7 +171,7 @@ if (perfetto_build_standalone || perfetto_build_with_android) {
 
   # Imlementation of the public-facing consumer API in libperfetto.so (only for
   # Android builds).
-  source_set("api") {
+  source_set("consumer_api") {
     deps = [
       ":ipc",
       ":tracing",
@@ -180,7 +180,7 @@ if (perfetto_build_standalone || perfetto_build_with_android) {
       "../base",
     ]
     sources = [
-      "api_impl/consumer_api.cc",
+      "public/consumer_api.cc",
     ]
   }
 }
