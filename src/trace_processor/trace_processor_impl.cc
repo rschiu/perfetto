@@ -403,7 +403,7 @@ void TraceProcessorImpl::InterruptQuery() {
   sqlite3_interrupt(db_.get());
 }
 
-int TraceProcessorImpl::ComputeMetric(
+util::Status TraceProcessorImpl::ComputeMetric(
     const std::vector<std::string>& metric_names,
     std::vector<uint8_t>* metrics_proto) {
   return metrics::ComputeMetrics(this, metric_names, metrics_proto);

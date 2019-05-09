@@ -117,15 +117,13 @@ void RunMetric(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
   }
 }
 
-int ComputeMetrics(TraceProcessor* tp,
-                   const std::vector<std::string>& metric_names,
-                   std::vector<uint8_t>* metrics_proto) {
+util::Status ComputeMetrics(TraceProcessor* tp,
+                            const std::vector<std::string>& metric_names,
+                            std::vector<uint8_t>* metrics_proto) {
   // TODO(lalitm): stop hardcoding android.mem metric and read the proto
   // descriptor for this logic instead.
-  if (metric_names.size() != 1 || metric_names[0] != "android.mem") {
-    PERFETTO_ELOG("Only android.mem metric is currently supported");
-    return 1;
-  }
+  if (metric_names.size() != 1 || metric_names[0] != "android.mem")
+    return util::ErrStatus("Only android.mem metric is currently supported");
 
   auto queries = base::SplitString(sql_metrics::kAndroidMem, ";\n");
   for (const auto& query : queries) {
@@ -133,10 +131,8 @@ int ComputeMetrics(TraceProcessor* tp,
     auto prep_it = tp->ExecuteQuery(query);
     prep_it.Next();
 
-    if (auto status = prep_it.Status()) {
-      PERFETTO_ELOG("SQLite error: %s", status.message().c_str());
-      return 1;
-    }
+    if (auto status = prep_it.Status())
+      return status;
   }
 
   protozero::ScatteredHeapBuffer delegate;
@@ -150,10 +146,9 @@ int ComputeMetrics(TraceProcessor* tp,
   // filling to ensure that the code above works.
   auto it = tp->ExecuteQuery("SELECT COUNT(*) from lmk_by_score;");
   auto has_next = it.Next();
-  if (auto status = it.Status()) {
-    PERFETTO_ELOG("SQLite error: %s", status.message().c_str());
-    return 1;
-  }
+  if (auto status = it.Status())
+    return status;
+
   PERFETTO_CHECK(has_next);
   PERFETTO_CHECK(it.Get(0).type == SqlValue::Type::kLong);
 
@@ -176,14 +171,12 @@ int ComputeMetrics(TraceProcessor* tp,
     anon->set_max(it.Get(2).AsDouble());
     anon->set_avg(it.Get(3).AsDouble());
   }
-  if (auto status = it.Status()) {
-    PERFETTO_ELOG("SQLite error: %s", status.message().c_str());
-    return 1;
-  }
+  if (auto status = it.Status())
+    return status;
 
   metrics.Finalize();
   *metrics_proto = delegate.StitchSlices();
-  return 0;
+  return util::OkStatus();
 }
 
 }  // namespace metrics

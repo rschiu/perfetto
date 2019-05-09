@@ -617,9 +617,12 @@ int TraceProcessorMain(int argc, char** argv) {
     PERFETTO_CHECK(aio_read(&cb) == 0);
 
     // Parse the completed buffer while the async read is in-flight.
-    bool success = tp->Parse(std::move(buf), static_cast<size_t>(rsize));
-    if (PERFETTO_UNLIKELY(!success))
+    auto status = tp->Parse(std::move(buf), static_cast<size_t>(rsize));
+    if (PERFETTO_UNLIKELY(!status.ok())) {
+      PERFETTO_ELOG("Error while parsing trace chunk: %s",
+                    status.message().c_str());
       return 1;
+    }
   }
   tp->NotifyEndOfFile();
 
