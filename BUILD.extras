@@ -28,3 +28,12 @@ cc_fuzz_target(
            ],
     componentid = 323270,
 )
+
+cc_fuzz_target(
+    name = "proto_decoder_fuzzer",
+    srcs = ["src/protozero/proto_decoder_fuzzer.cc"],
+    componentid = 323270,
+    deps = [
+        ":trace_processor",
+    ],
+)
